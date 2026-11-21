@@ -17,6 +17,8 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { ResendOtpDto } from './dto/resend-otp.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -163,6 +165,22 @@ export class AuthController {
       success: true,
       data: user,
     };
+  }
+
+  @Post('verify-otp')
+  @HttpCode(HttpStatus.OK)
+  async verifyOtp(@Body() dto: VerifyOtpDto, @Req() req: Request) {
+    const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    return this.authService.verifyOtp(dto.email, dto.otp, ip, userAgent);
+  }
+
+  @Post('resend-otp')
+  @HttpCode(HttpStatus.OK)
+  async resendOtp(@Body() dto: ResendOtpDto, @Req() req: Request) {
+    const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    return this.authService.resendOtp(dto.email, ip, userAgent);
   }
 
   @Post('verify-email')

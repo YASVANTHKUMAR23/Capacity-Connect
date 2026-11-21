@@ -1,0 +1,152 @@
+warning: in the working copy of 'backend/package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/prisma/schema.prisma', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/common/constants/error-codes.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/database/prisma.service.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/main.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/modules/auth/auth.controller.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/modules/auth/auth.repository.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/modules/auth/auth.service.spec.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/modules/auth/auth.service.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/modules/auth/services/token.service.spec.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/modules/auth/services/token.service.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/modules/email/email.service.ts', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/backend/package.json b/backend/package.json[m
+[1mindex 65f52fb..cca7c4c 100644[m
+[1m--- a/backend/package.json[m
+[1m+++ b/backend/package.json[m
+[36m@@ -10,7 +10,7 @@[m
+     "start": "nest start",[m
+     "start:dev": "nest start --watch",[m
+     "start:debug": "nest start --debug --watch",[m
+[31m-    "start:prod": "node dist/src/main",[m
+[32m+[m[32m    "start:prod": "node dist/main",[m
+     "prisma:generate": "prisma generate",[m
+     "prisma:migrate": "prisma migrate dev",[m
+     "prisma:migrate:deploy": "prisma migrate deploy",[m
+[1mdiff --git a/backend/prisma/schema.prisma b/backend/prisma/schema.prisma[m
+[1mindex 5b7b48d..fddd361 100644[m
+[1m--- a/backend/prisma/schema.prisma[m
+[1m+++ b/backend/prisma/schema.prisma[m
+[36m@@ -86,6 +86,7 @@[m [mmodel EmailVerificationToken {[m
+   tokenHash String    @unique[m
+   expiresAt DateTime  @db.Timestamptz(6)[m
+   usedAt    DateTime? @db.Timestamptz(6)[m
+[32m+[m[32m  attempts  Int       @default(0)[m
+   createdAt DateTime  @default(now()) @db.Timestamptz(6)[m
+ [m
+   user User @relation(fields: [userId], references: [id], onDelete: Cascade)[m
+[1mdiff --git a/backend/src/common/constants/error-codes.ts b/backend/src/common/constants/error-codes.ts[m
+[1mindex a0bb137..9f201dd 100644[m
+[1m--- a/backend/src/common/constants/error-codes.ts[m
+[1m+++ b/backend/src/common/constants/error-codes.ts[m
+[36m@@ -11,6 +11,10 @@[m [mexport const ERROR_CODES = {[m
+   TOKEN_INVALID: 'TOKEN_INVALID',[m
+   TOKEN_REUSED: 'TOKEN_REUSED',[m
+   INVALID_RESET_TOKEN: 'INVALID_RESET_TOKEN',[m
+[32m+[m[32m  INVALID_OTP: 'INVALID_OTP',[m
+[32m+[m[32m  OTP_EXPIRED: 'OTP_EXPIRED',[m
+[32m+[m[32m  OTP_MAX_ATTEMPTS_EXCEEDED: 'OTP_MAX_ATTEMPTS_EXCEEDED',[m
+[32m+[m[32m  RESEND_COOLDOWN_ACTIVE: 'RESEND_COOLDOWN_ACTIVE',[m
+   SESSION_REVOKED: 'SESSION_REVOCATION',[m
+   RATE_LIMIT_EXCEEDED: 'RATE_LIMIT_EXCEEDED',[m
+   VALIDATION_ERROR: 'VALIDATION_ERROR',[m
+[1mdiff --git a/backend/src/database/prisma.service.ts b/backend/src/database/prisma.service.ts[m
+[1mindex 328ac6d..7a479f6 100644[m
+[1m--- a/backend/src/database/prisma.service.ts[m
+[1m+++ b/backend/src/database/prisma.service.ts[m
+[36m@@ -1,23 +1,38 @@[m
+[31m-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';[m
+[32m+[m
+[32m+[m[32mimport {[m
+[32m+[m[32m  Injectable,[m
+[32m+[m[32m  OnModuleInit,[m
+[32m+[m[32m  OnModuleDestroy,[m
+[32m+[m[32m  Logger,[m
+[32m+[m[32m} from '@nestjs/common';[m
+[32m+[m
+ import { PrismaClient } from '@prisma/client';[m
+ [m
+ @Injectable()[m
+[31m-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {[m
+[32m+[m[32mexport class PrismaService[m
+[32m+[m[32m  extends PrismaClient[m
+[32m+[m[32m  implements OnModuleInit, OnModuleDestroy[m
+[32m+[m[32m{[m
+   private readonly logger = new Logger(PrismaService.name);[m
+ [m
+[31m-  async onModuleInit() {[m
+[32m+[m[32m  async onModuleInit(): Promise<void> {[m
+     try {[m
+       await this.$connect();[m
+[32m+[m
+       this.logger.log('Connected to PostgreSQL via Prisma');[m
+     } catch (error) {[m
+[31m-      this.logger.warn([m
+[31m-        `Database connection deferred (this is normal during testing or before database URL configuration): ${error.message}`,[m
+[32m+[m[32m      this.logger.error([m
+[32m+[m[32m        'Failed to connect to PostgreSQL',[m
+[32m+[m[32m        error instanceof Error ? error.stack : String(error),[m
+       );[m
+[32m+[m
+[32m+[m[32m      throw error;[m
+     }[m
+   }[m
+ [m
+[31m-  async onModuleDestroy() {[m
+[32m+[m[32m  async onModuleDestroy(): Promise<void> {[m
+     await this.$disconnect();[m
+[32m+[m
+     this.logger.log('Disconnected from PostgreSQL');[m
+   }[m
+ }[m
+[1mdiff --git a/backend/src/main.ts b/backend/src/main.ts[m
+[1mindex 3f5314d..6f9975d 100644[m
+[1m--- a/backend/src/main.ts[m
+[1m+++ b/backend/src/main.ts[m
+[36m@@ -3,7 +3,7 @@[m [mimport { AppModule } from './app.module';[m
+ import { ValidationPipe, Logger } from '@nestjs/common';[m
+ import { ConfigService } from '@nestjs/config';[m
+ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';[m
+[31m-import cookieParser from 'cookie-parser';[m
+[32m+[m[32mimport * as cookieParser from 'cookie-parser';[m
+ [m
+ async function bootstrap() {[m
+   const logger = new Logger('Bootstrap');[m
+[1mdiff --git a/backend/src/modules/auth/auth.controller.ts b/backend/src/modules/auth/auth.controller.ts[m
+[1mindex 07218cd..c20b23a 100644[m
+[1m--- a/backend/src/modules/auth/auth.controller.ts[m
+[1m+++ b/backend/src/modules/auth/auth.controller.ts[m
+[36m@@ -17,6 +17,8 @@[m [mimport { LoginDto } from './dto/login.dto';[m
+ import { RefreshTokenDto } from './dto/refresh.dto';[m
+ import { VerifyEmailDto } from './dto/verify-email.dto';[m
+ import { ResendVerificationDto } from './dto/resend-verification.dto';[m
+[32m+[m[32mimport { VerifyOtpDto } from './dto/verify-otp.dto';[m
+[32m+[m[32mimport { ResendOtpDto } from './dto/resend-otp.dto';[m
+ import { ForgotPasswordDto } from './dto/forgot-password.dto';[m
+ import { ResetPasswordDto } from './dto/reset-password.dto';[m
+ import { ChangePasswordDto } from './dto/change-password.dto';[m
+[36m@@ -165,6 +167,22 @@[m [mexport class AuthController {[m
+     };[m
+   }[m
+ [m
+[32m+[m[32m  @Post('verify-otp')[m
+[32m+[m[32m  @HttpCode(HttpStatus.OK)[m
+[32m+[m[32m  async verifyOtp(@Body() dto: VerifyOtpDto, @Req() req: Request) {[m
+[32m+[m[32m    const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress;[m
+[32m+[m[32m    const userAgent = req.headers['user-agent'];[m
+[32m+[m[32m    return this.authService.verifyOtp(dto.email, dto.otp, ip, userAgent);[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  @Post('resend-otp')[m
+[32m+[m[32m  @HttpCode(HttpStatus.OK)[m
+[32m+[m[32m  async resendOtp(@Body() dto: ResendOtpDto, @Req() req: Request) {[m
+[32m+[m[32m    const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress;[m
+[32m+[m[32m    const userAgent = req.headers['user-agent'];[m
+[32m+[m[32m    return this.authService.resendOtp(dto.email, ip, userAgent);[m
+[32m+[m[32m  }[m
+[32m+[m
+   @Post('verify-email')[m
+   @HttpCode(HttpStatus.OK)[m
+   async verifyEmail(@Body() dto: VerifyEmailDto, @Req() req: Request) {[m
+[1mdiff --git a/backend/src/modules/auth/auth.repository.ts b/backend/src/modules/auth/auth.repository.ts[m
+[1mindex f9161ae..9894180 

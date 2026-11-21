@@ -34,6 +34,12 @@ export class TokenService {
     return { token, hash };
   }
 
+  generateSixDigitOtp(): { otp: string; hash: string } {
+    const otp = crypto.randomInt(100000, 1000000).toString();
+    const hash = this.hashOpaqueToken(otp);
+    return { otp, hash };
+  }
+
   hashOpaqueToken(token: string): string {
     return crypto.createHash('sha256').update(token).digest('hex');
   }

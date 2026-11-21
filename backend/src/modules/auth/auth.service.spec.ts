@@ -29,6 +29,9 @@ describe('AuthService', () => {
       updateUser: jest.fn(),
       createVerificationToken: jest.fn(),
       findVerificationToken: jest.fn(),
+      findLatestVerificationTokenForUser: jest.fn(),
+      invalidateActiveVerificationTokens: jest.fn(),
+      incrementVerificationAttempts: jest.fn(),
       markVerificationTokenUsed: jest.fn(),
       createPasswordResetToken: jest.fn(),
       findPasswordResetToken: jest.fn(),
@@ -50,8 +53,9 @@ describe('AuthService', () => {
 
     tokenService = {
       generateOpaqueToken: jest.fn().mockReturnValue({ token: 'test-token', hash: 'test-hash' }),
+      generateSixDigitOtp: jest.fn().mockReturnValue({ otp: '123456', hash: 'hash_123456' }),
       generateAccessToken: jest.fn().mockReturnValue('mock-jwt-access-token'),
-      hashOpaqueToken: jest.fn().mockReturnValue('test-hash'),
+      hashOpaqueToken: jest.fn().mockImplementation((val) => `hash_${val}`),
       calculateExpiry: jest.fn().mockReturnValue(new Date(Date.now() + 60000)),
     };
 
@@ -62,6 +66,7 @@ describe('AuthService', () => {
 
     emailService = {
       sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
+      sendVerificationOtp: jest.fn().mockResolvedValue(undefined),
       sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
     };
 
@@ -146,7 +151,7 @@ describe('AuthService', () => {
 
       expect(res.success).toBe(true);
       expect(res.data.accountStatus).toBe(AccountStatus.PENDING_APPROVAL);
-      expect(emailService.sendVerificationEmail).toHaveBeenCalled();
+      expect(emailService.sendVerificationOtp).toHaveBeenCalled();
     });
   });
 
@@ -207,6 +212,73 @@ describe('AuthService', () => {
       expect(res.accessToken).toBe('mock-jwt-access-token');
       expect(res.user.email).toBe('ravi.menon@imd.gov.in');
       expect(res.refreshToken).toBe('mock-refresh-token');
+    });
+  });
+
+  describe('OTP verification', () => {
+    it('should reject invalid OTP and increment attempts', async () => {
+      (authRepository.findByEmail as jest.Mock).mockResolvedValueOnce({
+        id: 'user-otp-1',
+        email: 'asha@imd.gov.in',
+        emailVerifiedAt: null,
+      });
+
+      (authRepository.findLatestVerificationTokenForUser as jest.Mock).mockResolvedValueOnce({
+        id: 'token-rec-1',
+        tokenHash: 'hash_999999',
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        usedAt: null,
+        attempts: 1,
+      });
+
+      (authRepository.incrementVerificationAttempts as jest.Mock).mockResolvedValueOnce({
+        attempts: 2,
+      });
+
+      await expect(
+        authService.verifyOtp('asha@imd.gov.in', '000000'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(authRepository.incrementVerificationAttempts).toHaveBeenCalledWith('token-rec-1');
+    });
+
+    it('should successfully verify email with valid 6-digit OTP and keep account pending approval', async () => {
+      (authRepository.findByEmail as jest.Mock).mockResolvedValueOnce({
+        id: 'user-otp-1',
+        email: 'asha@imd.gov.in',
+        emailVerifiedAt: null,
+      });
+
+      (authRepository.findLatestVerificationTokenForUser as jest.Mock).mockResolvedValueOnce({
+        id: 'token-rec-1',
+        tokenHash: 'hash_123456',
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        usedAt: null,
+        attempts: 0,
+      });
+
+      const res = await authService.verifyOtp('asha@imd.gov.in', '123456');
+
+      expect(res.success).toBe(true);
+      expect(authRepository.markVerificationTokenUsed).toHaveBeenCalledWith('token-rec-1');
+      expect(authRepository.updateUser).toHaveBeenCalledWith('user-otp-1', {
+        emailVerifiedAt: expect.any(Date),
+      });
+    });
+
+    it('should enforce 60-second cooldown on resend OTP', async () => {
+      (authRepository.findByEmail as jest.Mock).mockResolvedValueOnce({
+        id: 'user-otp-1',
+        email: 'asha@imd.gov.in',
+        emailVerifiedAt: null,
+      });
+
+      (authRepository.findLatestVerificationTokenForUser as jest.Mock).mockResolvedValueOnce({
+        id: 'token-rec-1',
+        createdAt: new Date(Date.now() - 20 * 1000), // only 20 seconds ago
+      });
+
+      await expect(authService.resendOtp('asha@imd.gov.in')).rejects.toThrow(BadRequestException);
     });
   });
 });

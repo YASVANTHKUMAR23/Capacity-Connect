@@ -83,13 +83,14 @@ export class AuthService {
       organization: dto.organization?.trim() || null,
     });
 
-    // 7. Generate email verification token (30m validity)
-    const { token, hash } = this.tokenService.generateOpaqueToken();
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    // 7. Invalidate any previous OTPs and generate secure 6-digit OTP (10m validity)
+    await this.authRepository.invalidateActiveVerificationTokens(user.id);
+    const { otp, hash } = this.tokenService.generateSixDigitOtp();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiry
     await this.authRepository.createVerificationToken(user.id, hash, expiresAt);
 
-    // 8. Send verification email
-    await this.emailService.sendVerificationEmail(cleanEmail, token);
+    // 8. Dispatch 6-digit OTP to user's registered email
+    await this.emailService.sendVerificationOtp(cleanEmail, otp);
 
     // 9. Audit log
     await this.auditService.logEvent({
@@ -102,7 +103,7 @@ export class AuthService {
 
     return {
       success: true,
-      message: 'Registration successful. Please check your official email to verify your account.',
+      message: 'Registration successful. A 6-digit verification OTP has been sent to your email.',
       data: {
         id: user.id,
         email: user.email,
@@ -214,35 +215,84 @@ export class AuthService {
     };
   }
 
-  async verifyEmail(token: string, ipAddress?: string, userAgent?: string) {
-    const hash = this.tokenService.hashOpaqueToken(token);
-    const record = await this.authRepository.findVerificationToken(hash);
+  async verifyOtp(email: string, otp: string, ipAddress?: string, userAgent?: string) {
+    const cleanEmail = normalizeEmail(email);
+    const user = await this.authRepository.findByEmail(cleanEmail);
+
+    if (!user) {
+      throw new BadRequestException({
+        code: ERROR_CODES.INVALID_OTP,
+        message: 'Invalid verification request or email not found.',
+      });
+    }
+
+    if (user.emailVerifiedAt) {
+      return {
+        success: true,
+        message: 'Email is already verified. Your account is pending administrator review.',
+      };
+    }
+
+    // Retrieve active OTP record for user
+    const record = await this.authRepository.findLatestVerificationTokenForUser(user.id);
 
     if (!record || record.usedAt) {
       throw new BadRequestException({
-        code: ERROR_CODES.TOKEN_INVALID,
-        message: 'Invalid or already used email verification token.',
+        code: ERROR_CODES.INVALID_OTP,
+        message: 'No active OTP found. Please request a new verification code.',
       });
     }
 
-    if (new Date() > record.expiresAt) {
+    // Check maximum attempts (5 allowed)
+    if (record.attempts >= 5) {
+      await this.authRepository.markVerificationTokenUsed(record.id);
       throw new BadRequestException({
-        code: ERROR_CODES.TOKEN_EXPIRED,
-        message: 'Email verification token has expired. Please request a new one.',
+        code: ERROR_CODES.OTP_MAX_ATTEMPTS_EXCEEDED,
+        message: 'Maximum verification attempts exceeded. Please request a new OTP.',
       });
     }
 
-    // Mark token used and update emailVerifiedAt
+    // Check 10-minute expiration
+    if (new Date() > record.expiresAt) {
+      await this.authRepository.markVerificationTokenUsed(record.id);
+      throw new BadRequestException({
+        code: ERROR_CODES.OTP_EXPIRED,
+        message: 'Verification OTP has expired. Please request a new one.',
+      });
+    }
+
+    // Verify hashed OTP
+    const submittedHash = this.tokenService.hashOpaqueToken(otp.trim());
+    if (record.tokenHash !== submittedHash) {
+      const updated = await this.authRepository.incrementVerificationAttempts(record.id);
+      const remaining = 5 - updated.attempts;
+      
+      if (remaining <= 0) {
+        await this.authRepository.markVerificationTokenUsed(record.id);
+        throw new BadRequestException({
+          code: ERROR_CODES.OTP_MAX_ATTEMPTS_EXCEEDED,
+          message: 'Maximum verification attempts exceeded. Please request a new OTP.',
+        });
+      }
+
+      throw new BadRequestException({
+        code: ERROR_CODES.INVALID_OTP,
+        message: `Invalid OTP code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`,
+      });
+    }
+
+    // Successful verification
     await this.authRepository.markVerificationTokenUsed(record.id);
-    await this.authRepository.updateUser(record.userId, {
+    await this.authRepository.updateUser(user.id, {
       emailVerifiedAt: new Date(),
     });
 
     await this.auditService.logEvent({
-      userId: record.userId,
+      userId: user.id,
       eventType: AuditEventType.EMAIL_VERIFIED,
       ipAddress,
       userAgent,
+      metadata: { method: 'EMAIL_OTP' },
     });
 
     return {
@@ -251,26 +301,71 @@ export class AuthService {
     };
   }
 
-  async resendVerification(email: string) {
+  async resendOtp(email: string, ipAddress?: string, userAgent?: string) {
     const cleanEmail = normalizeEmail(email);
     const user = await this.authRepository.findByEmail(cleanEmail);
 
-    if (user && !user.emailVerifiedAt) {
-      const { token, hash } = this.tokenService.generateOpaqueToken();
-      const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
-      await this.authRepository.createVerificationToken(user.id, hash, expiresAt);
-      await this.emailService.sendVerificationEmail(cleanEmail, token);
-      await this.auditService.logEvent({
-        userId: user.id,
-        eventType: AuditEventType.EMAIL_VERIFY_REQUEST,
-      });
+    if (!user) {
+      // Enumeration-resistant generic response
+      return {
+        success: true,
+        message: 'If an unverified account exists for this email, a new verification OTP has been sent.',
+      };
     }
 
-    // Generic response to avoid email enumeration
+    if (user.emailVerifiedAt) {
+      return {
+        success: true,
+        message: 'Email is already verified. Your account is pending administrator review.',
+      };
+    }
+
+    // Check 60-second resend cooldown
+    const latestToken = await this.authRepository.findLatestVerificationTokenForUser(user.id);
+    if (latestToken) {
+      const elapsedMs = Date.now() - latestToken.createdAt.getTime();
+      const cooldownMs = 60 * 1000;
+      if (elapsedMs < cooldownMs) {
+        const remainingSeconds = Math.ceil((cooldownMs - elapsedMs) / 1000);
+        throw new BadRequestException({
+          code: ERROR_CODES.RESEND_COOLDOWN_ACTIVE,
+          message: `Please wait ${remainingSeconds} seconds before requesting a new OTP.`,
+        });
+      }
+    }
+
+    // Invalidate previous OTPs
+    await this.authRepository.invalidateActiveVerificationTokens(user.id);
+
+    // Generate new 6-digit OTP (10 mins validity)
+    const { otp, hash } = this.tokenService.generateSixDigitOtp();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await this.authRepository.createVerificationToken(user.id, hash, expiresAt);
+
+    // Send via email
+    await this.emailService.sendVerificationOtp(cleanEmail, otp);
+
+    await this.auditService.logEvent({
+      userId: user.id,
+      eventType: AuditEventType.EMAIL_VERIFY_REQUEST,
+      ipAddress,
+      userAgent,
+      metadata: { method: 'RESEND_OTP' },
+    });
+
     return {
       success: true,
-      message: 'If an unverified account exists for this email, a verification link has been sent.',
+      message: 'A new 6-digit verification code has been dispatched to your email address.',
     };
+  }
+
+  // Alias wrappers for backwards compatibility
+  async verifyEmail(token: string, ipAddress?: string, userAgent?: string) {
+    return this.verifyOtp(token, token, ipAddress, userAgent);
+  }
+
+  async resendVerification(email: string) {
+    return this.resendOtp(email);
   }
 
   async forgotPassword(email: string, captchaToken: string, ipAddress?: string) {

@@ -37,6 +37,7 @@ export class AuthRepository {
         userId,
         tokenHash,
         expiresAt,
+        attempts: 0,
       },
     });
   }
@@ -45,6 +46,35 @@ export class AuthRepository {
     return this.prisma.emailVerificationToken.findUnique({
       where: { tokenHash },
       include: { user: true },
+    });
+  }
+
+  async findLatestVerificationTokenForUser(userId: string) {
+    return this.prisma.emailVerificationToken.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      include: { user: true },
+    });
+  }
+
+  async invalidateActiveVerificationTokens(userId: string) {
+    return this.prisma.emailVerificationToken.updateMany({
+      where: {
+        userId,
+        usedAt: null,
+      },
+      data: {
+        usedAt: new Date(),
+      },
+    });
+  }
+
+  async incrementVerificationAttempts(id: string) {
+    return this.prisma.emailVerificationToken.update({
+      where: { id },
+      data: {
+        attempts: { increment: 1 },
+      },
     });
   }
 

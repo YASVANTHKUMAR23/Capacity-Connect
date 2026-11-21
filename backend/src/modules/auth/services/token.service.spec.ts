@@ -63,6 +63,15 @@ describe('TokenService', () => {
     expect(service.hashOpaqueToken(token)).toBe(hash);
   });
 
+  it('should generate a cryptographically random 6-digit numeric OTP and its hash', () => {
+    const { otp, hash } = service.generateSixDigitOtp();
+
+    expect(otp).toHaveLength(6);
+    expect(/^\d{6}$/.test(otp)).toBe(true);
+    expect(hash).toHaveLength(64);
+    expect(service.hashOpaqueToken(otp)).toBe(hash);
+  });
+
   it('should calculate expiry date accurately', () => {
     const before = Date.now();
     const expiry = service.calculateExpiry('15m');
