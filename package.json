@@ -1,0 +1,22 @@
+{
+  "name": "capacity-connect-monorepo",
+  "version": "1.0.0",
+  "description": "Capacity Connect — Institutional Capacity Building & Learning Management Platform with AI Assistant (IMD / MoES)",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && pnpm run start:dev",
+    "dev:frontend": "cd capacityconnect---frontend && npm run dev",
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "cd backend && pnpm run build",
+    "build:frontend": "cd capacityconnect---frontend && npm run build",
+    "test:backend": "cd backend && pnpm run test",
+    "prisma:generate": "cd backend && pnpm run prisma:generate",
+    "prisma:migrate": "cd backend && pnpm run prisma:migrate",
+    "docker:up": "docker compose up --build -d",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

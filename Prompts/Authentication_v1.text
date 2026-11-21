@@ -1,0 +1,946 @@
+# CAPACITY CONNECT
+## Backend Architecture & Implementation Specification
+### Module 01 — Authentication & Identity Management
+
+**Project:** Capacity Connect  
+**Module:** Authentication and Identity Management  
+**Architecture:** Modular Monolith  
+**Backend:** NestJS + TypeScript  
+**Database:** Neon Serverless PostgreSQL  
+**ORM:** Prisma  
+**Security:** Argon2id + Cloudflare Turnstile + JWT
+
+---
+
+# 1. OBJECTIVE
+
+Build a secure, scalable authentication system for Capacity Connect.
+
+The system must support three user roles:
+
+1. ADMIN
+2. TRAINER
+3. TRAINEE
+
+The authentication module is responsible for:
+
+- User registration.
+- Official IMD email domain validation.
+- CAPTCHA verification.
+- Secure password hashing.
+- Login and logout.
+- Email verification.
+- Forgot and reset password.
+- Access and refresh token management.
+- Session management.
+- Role-based authorization.
+- Account status verification.
+
+IMPORTANT: The existing React frontend has already been developed. Do not rebuild or redesign the frontend. Integrate the backend with the existing authentication screens and workflows.
+
+# 2. TECHNOLOGY STACK
+
+| Component | Technology |
+|---|---|
+| Language | TypeScript |
+| Runtime | Node.js |
+| Framework | NestJS |
+| Database | Neon PostgreSQL |
+| ORM | Prisma |
+| Password hashing | Argon2id |
+| CAPTCHA | Cloudflare Turnstile |
+| Authentication | JWT |
+| Token management | Access + Refresh Tokens |
+| Email | SMTP / Institutional SMTP |
+| Validation | class-validator |
+| API documentation | Swagger / OpenAPI |
+| Testing | Jest + Supertest |
+| API architecture | REST API |
+| API version | v1 |
+
+Use compatible, stable versions of dependencies. Do not introduce unnecessary libraries.
+
+# 3. ARCHITECTURE DESIGN
+
+Implement a modular monolithic architecture.
+
+Authentication must be separated into independent responsibilities.
+
+Main components:
+
+- Auth Module
+- Users Module
+- Roles Module
+- Email Module
+- Sessions Module
+- Security Module
+- Database Module
+- Audit Module
+
+Responsibilities:
+
+**Auth Module:** Registration, login, logout, token refresh, password recovery.
+
+**Users Module:** User account retrieval and basic identity information.
+
+**Roles Module:** Role definitions and permission verification.
+
+**Email Module:** Verification and password recovery emails.
+
+**Sessions Module:** Refresh token storage, rotation and revocation.
+
+**Security Module:** CAPTCHA verification, password hashing and security utilities.
+
+**Database Module:** Prisma connection and database access.
+
+**Audit Module:** Authentication event logging.
+
+Do not combine all authentication logic inside a single service.
+
+# 4. USER REGISTRATION
+
+## 4.1 Registration requirements
+
+Support registration for:
+
+- Trainer
+- Trainee
+
+Public ADMIN registration must not be allowed.
+
+Required registration information should match the existing frontend forms. Inspect the existing form fields before defining the final request DTO.
+
+Minimum common fields:
+
+- Full name
+- Official email address
+- Password
+- Confirm password (frontend validation)
+- Role
+- CAPTCHA token
+
+Role-specific profile fields should be handled through the appropriate profile workflow, not unnecessarily added to the authentication entity.
+
+## 4.2 IMD official email validation
+
+Only allow authorized IMD email domains.
+
+Example:
+
+- employee@imd.gov.in — Accept
+- officer@imd.gov.in — Accept
+- employee@gmail.com — Reject
+- employee@fakeimd.gov.in — Reject
+- employee@imd.gov.in.fake.com — Reject
+
+IMPORTANT:
+
+Do not assume that `imd.gov.in` is the only authorized domain. Confirm the official domain list with IMD administration.
+
+Implementation requirements:
+
+1. Normalize the email address.
+2. Convert the domain to lowercase.
+3. Extract the exact domain after the final @ separator.
+4. Compare it against an explicit allowlist.
+5. Reject unauthorized domains.
+6. Never use substring matching.
+7. Never trust frontend-only validation.
+
+Store the approved domain list in backend configuration initially. Keep the design extensible for multiple approved domains.
+
+Default policy: Both Trainer and Trainee registrations require an authorized IMD email address. Keep this policy configurable.
+
+## 4.3 Registration workflow
+
+1. User submits registration form.
+2. Backend validates all required fields.
+3. Backend validates the email domain.
+4. Backend checks whether the email already exists.
+5. Backend verifies Cloudflare Turnstile token.
+6. Backend validates password requirements.
+7. Backend hashes the password using Argon2id.
+8. Backend creates the user record.
+9. Account is created in PENDING_APPROVAL status.
+10. Email verification is initiated.
+11. User receives verification email.
+12. User verifies the email address.
+13. User remains pending until authorized admin approval.
+14. Approved and email-verified users can log in.
+
+Use a database transaction for operations that must succeed or fail together.
+
+# 5. CLOUDFLARE TURNSTILE CAPTCHA
+
+Integrate Cloudflare Turnstile.
+
+Requirements:
+
+- Frontend Turnstile widget.
+- Backend token verification.
+- Secret key stored only in backend environment variables.
+- Site key exposed to the frontend through public configuration.
+- Validate successful verification.
+- Validate hostname against configured application domains.
+- Validate the expected action where action metadata is configured.
+- Reject expired and invalid tokens.
+- Never trust CAPTCHA results supplied by the frontend without backend verification.
+
+Backend verification endpoint:
+
+`https://challenges.cloudflare.com/turnstile/v0/siteverify`
+
+Apply CAPTCHA verification to:
+
+- Registration
+- Login
+- Password recovery request
+
+Do not treat CAPTCHA as a replacement for rate limiting.
+
+# 6. PASSWORD SECURITY
+
+Use Argon2id.
+
+Requirements:
+
+- Hash every password before database storage.
+- Never store plaintext passwords.
+- Never encrypt passwords for reversible storage.
+- Never return password hashes through APIs.
+- Use configurable Argon2id parameters.
+- Benchmark the configuration on the deployment environment.
+- Verify passwords using Argon2id verification.
+- Rehash passwords when security parameters are upgraded.
+
+Use the maintained Node.js Argon2 implementation.
+
+Password policy:
+
+- Minimum 12 characters.
+- Maximum 128 characters.
+- Do not silently truncate passwords.
+- Reject known compromised passwords if a suitable password screening service is available.
+- Never log passwords.
+
+# 7. LOGIN AND AUTHENTICATION
+
+## 7.1 Login workflow
+
+1. User enters email and password.
+2. User completes Cloudflare Turnstile.
+3. Frontend submits login request.
+4. Backend validates request fields.
+5. Backend validates CAPTCHA.
+6. Backend finds the user by normalized email.
+7. Backend verifies password using Argon2id.
+8. Backend checks email verification.
+9. Backend checks account approval status.
+10. Backend checks whether the account is suspended or rejected.
+11. Backend generates access and refresh tokens.
+12. Backend stores a hashed refresh token in the database.
+13. Backend returns user identity and access token.
+14. Refresh token is delivered using a secure HttpOnly cookie.
+
+## 7.2 Account status rules
+
+Maintain email verification and account approval as separate properties.
+
+Account approval statuses:
+
+- PENDING_APPROVAL
+- ACTIVE
+- REJECTED
+- SUSPENDED
+
+Email verification:
+
+- emailVerifiedAt is null when unverified.
+- emailVerifiedAt contains a timestamp when verified.
+
+Login must be denied when:
+
+- Email is not verified.
+- Account is pending approval.
+- Account is rejected.
+- Account is suspended.
+- Credentials are incorrect.
+
+Return clear, frontend-compatible error codes.
+
+Never allow a valid password to bypass account approval.
+
+# 8. JWT AND SESSION MANAGEMENT
+
+Implement two token types.
+
+## Access Token
+
+- Short-lived JWT.
+- Recommended lifetime: 10–15 minutes.
+- Used to authorize protected API requests.
+- Contains user ID and role claims.
+- Must not contain sensitive personal information.
+
+## Refresh Token
+
+- Recommended lifetime: 7 days.
+- Delivered in Secure, HttpOnly, SameSite cookies.
+- Store only its cryptographic hash in PostgreSQL.
+- Rotate on every successful refresh.
+- Revoke previous token during rotation.
+- Detect refresh token reuse.
+- Revoke the affected token family if reuse is detected.
+
+## Logout
+
+When the user logs out:
+
+1. Revoke the current refresh session.
+2. Clear the refresh cookie.
+3. Reject future use of the revoked token.
+4. Return logout success.
+
+Support individual session revocation and logout from all devices.
+
+Use a unique session identifier (`sid`) in access tokens where required for session-aware security.
+
+# 9. EMAIL VERIFICATION
+
+Implement email verification using secure, single-use verification tokens.
+
+Requirements:
+
+- Generate cryptographically secure random tokens.
+- Store only token hashes.
+- Set an expiry period, recommended 15–30 minutes.
+- Invalidate tokens after successful verification.
+- Prevent token reuse.
+- Support resend verification.
+- Apply resend rate limits.
+- Never expose verification tokens in application logs.
+
+Email verification must not automatically approve the account.
+
+# 10. FORGOT PASSWORD AND RESET PASSWORD
+
+## Forgot password
+
+1. User enters email.
+2. Complete CAPTCHA.
+3. Backend checks the account.
+4. Generate a secure random reset token.
+5. Store its hash with an expiry.
+6. Send password reset email.
+7. Return the same generic response whether or not the email exists.
+
+## Reset password
+
+1. User opens the reset link.
+2. Frontend submits token and new password.
+3. Backend validates token.
+4. Backend checks expiry and token usage.
+5. Backend hashes the new password with Argon2id.
+6. Backend updates the password.
+7. Backend invalidates the reset token.
+8. Backend revokes existing refresh sessions.
+9. User must authenticate again.
+
+# 11. DATABASE DESIGN — PRISMA + NEON
+
+Use Neon PostgreSQL as the primary database.
+
+Use Prisma for:
+
+- Schema management.
+- Database queries.
+- Migrations.
+- Relations.
+- Transactions.
+
+## 11.1 Initial database entities
+
+### User
+
+Fields:
+
+- id: UUID
+- fullName
+- email (unique)
+- passwordHash
+- role
+- accountStatus
+- emailVerifiedAt
+- createdAt
+- updatedAt
+- lastLoginAt
+
+### RefreshSession
+
+Fields:
+
+- id: UUID
+- userId
+- tokenHash
+- expiresAt
+- revokedAt
+- createdAt
+- lastUsedAt
+- userAgent (optional)
+- ipAddress (optional, subject to privacy policy)
+
+### EmailVerificationToken
+
+Fields:
+
+- id: UUID
+- userId
+- tokenHash
+- expiresAt
+- usedAt
+- createdAt
+
+### PasswordResetToken
+
+Fields:
+
+- id: UUID
+- userId
+- tokenHash
+- expiresAt
+- usedAt
+- createdAt
+
+### AuditLog
+
+Fields:
+
+- id: UUID
+- userId (nullable for unauthenticated events)
+- eventType
+- ipAddress (subject to privacy policy)
+- userAgent
+- metadata (JSON)
+- createdAt
+
+### Role
+
+Use a controlled role model supporting:
+
+- ADMIN
+- TRAINER
+- TRAINEE
+
+Avoid accepting arbitrary role names from registration requests.
+
+## 11.2 Database rules
+
+- Use UUID primary keys.
+- Enforce unique email addresses.
+- Add indexes to frequently queried fields.
+- Use foreign key constraints.
+- Use database transactions where necessary.
+- Store timestamps in UTC.
+- Never store plaintext tokens.
+- Never store plaintext passwords.
+- Use explicit deletion and retention policies for security records.
+
+Do not create a second database or introduce MongoDB.
+
+## 11.3 Neon configuration
+
+Use separate Neon connection strings:
+
+`DATABASE_URL`: Pooled Neon connection for normal application runtime.
+
+`DIRECT_URL`: Direct Neon connection for schema migrations and administrative database operations where supported by the installed Prisma version.
+
+Use the Prisma configuration appropriate to the installed version. Verify compatibility with Neon pooling before implementation.
+
+Never commit connection strings or database credentials.
+
+# 12. API ENDPOINTS
+
+Base URL:
+
+`/api/v1`
+
+## Authentication
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | /auth/register | Create account |
+| POST | /auth/login | Authenticate user |
+| POST | /auth/refresh | Refresh access token |
+| POST | /auth/logout | Revoke current session |
+| POST | /auth/logout-all | Revoke all sessions |
+| GET | /auth/me | Current authenticated user |
+
+## Email verification
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | /auth/verify-email | Verify email |
+| POST | /auth/resend-verification | Resend verification |
+
+## Password management
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | /auth/forgot-password | Request reset |
+| POST | /auth/reset-password | Reset password |
+| POST | /auth/change-password | Change password |
+
+## Session management
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | /auth/sessions | List user sessions |
+| DELETE | /auth/sessions/:id | Revoke a session |
+
+## Users
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | /users/me | Get current user profile |
+
+All endpoints must have request DTOs, response DTOs, validation and appropriate exception handling.
+
+Do not expose internal database entities directly.
+
+# 13. AUTHORIZATION AND ROLE-BASED ACCESS CONTROL
+
+Implement NestJS Guards and role decorators.
+
+Examples:
+
+- ADMIN: Access to authorized administrative endpoints.
+- TRAINER: Access to trainer-specific endpoints.
+- TRAINEE: Access to trainee-specific endpoints.
+
+Requirements:
+
+- Validate JWT signature and expiry.
+- Verify user account status for protected requests.
+- Enforce permissions on the backend.
+- Never trust role information sent from the frontend.
+- Never allow users to change their own role.
+- Restrict admin account creation to a trusted provisioning process.
+
+Use database-backed roles and permissions or a controlled enum-based RBAC implementation initially. Keep the design extensible.
+
+# 14. SECURITY REQUIREMENTS
+
+Mandatory:
+
+1. Argon2id password hashing.
+2. Cloudflare Turnstile server verification.
+3. Strict email domain validation.
+4. JWT access token expiry.
+5. Refresh token rotation.
+6. Hashed refresh tokens in the database.
+7. Secure HttpOnly cookies.
+8. HTTPS in production.
+9. Authentication rate limiting.
+10. Login brute-force protection.
+11. Email enumeration protection.
+12. Request validation.
+13. SQL injection protection through Prisma parameterized queries.
+14. CORS allowlist.
+15. CSRF protection for cookie-authenticated refresh/logout operations.
+16. Secure environment variables.
+17. Authentication audit logs.
+18. Generic authentication error messages.
+19. Session revocation.
+20. Password reset session invalidation.
+
+Never log:
+
+- Passwords.
+- JWTs.
+- Refresh tokens.
+- CAPTCHA secrets.
+- Email verification tokens.
+- Password reset tokens.
+
+# 15. BACKEND FOLDER STRUCTURE
+
+Create the following structure:
+
+backend/
+  src/
+    main.ts
+    app.module.ts
+
+    config/
+      configuration.ts
+      validation.ts
+
+    common/
+      decorators/
+        current-user.decorator.ts
+        roles.decorator.ts
+
+      guards/
+        jwt-auth.guard.ts
+        roles.guard.ts
+
+      filters/
+        global-exception.filter.ts
+
+      interceptors/
+
+      interfaces/
+
+    database/
+      database.module.ts
+      prisma.service.ts
+
+    modules/
+      auth/
+        auth.module.ts
+        auth.controller.ts
+        auth.service.ts
+        auth.repository.ts
+        dto/
+          register.dto.ts
+          login.dto.ts
+          refresh.dto.ts
+          forgot-password.dto.ts
+          reset-password.dto.ts
+          change-password.dto.ts
+        strategies/
+          jwt.strategy.ts
+        guards/
+        services/
+          password.service.ts
+          token.service.ts
+          captcha.service.ts
+          session.service.ts
+
+      users/
+        users.module.ts
+        users.controller.ts
+        users.service.ts
+
+      roles/
+        roles.module.ts
+        roles.service.ts
+
+      email/
+        email.module.ts
+        email.service.ts
+        templates/
+
+      sessions/
+        sessions.module.ts
+        sessions.controller.ts
+        sessions.service.ts
+
+      audit/
+        audit.module.ts
+        audit.service.ts
+
+  prisma/
+    schema.prisma
+    migrations/
+
+  test/
+    auth/
+    integration/
+
+  .env.example
+  Dockerfile
+  docker-compose.yml
+  package.json
+
+Follow NestJS conventions. Do not create unnecessary abstractions or duplicate services.
+
+# 16. ENVIRONMENT VARIABLES
+
+Create `.env.example` containing:
+
+```env
+NODE_ENV=development
+PORT=3000
+
+DATABASE_URL=
+DIRECT_URL=
+
+JWT_ACCESS_SECRET=
+JWT_ACCESS_EXPIRES_IN=15m
+
+REFRESH_TOKEN_SECRET=
+REFRESH_TOKEN_EXPIRES_IN=7d
+
+ARGON2_MEMORY_COST=
+ARGON2_TIME_COST=
+ARGON2_PARALLELISM=
+
+CLOUDFLARE_TURNSTILE_SECRET_KEY=
+CLOUDFLARE_TURNSTILE_SITE_KEY=
+
+IMD_ALLOWED_EMAIL_DOMAINS=imd.gov.in
+
+SMTP_HOST=
+SMTP_PORT=
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_FROM_EMAIL=
+
+FRONTEND_URL=
+CORS_ORIGIN=
+
+COOKIE_DOMAIN=
+```
+
+Use a proper secret manager or protected environment variables in production.
+
+Never include actual credentials in `.env.example`.
+
+# 17. FRONTEND INTEGRATION
+
+The existing frontend must be preserved.
+
+Before implementation:
+
+1. Inspect the existing authentication components.
+2. Identify registration form fields.
+3. Identify existing login form fields.
+4. Identify email verification screens.
+5. Identify forgot/reset password screens.
+6. Identify role selection and redirect logic.
+7. Identify existing context providers and authentication state.
+8. Map each screen to its corresponding backend endpoint.
+
+Replace simulated authentication and local-only authentication state with real API integration.
+
+Frontend requirements:
+
+- Centralized API client.
+- Authentication state management.
+- Protected routes.
+- Role-based navigation.
+- Access token handling in memory.
+- Refresh token handling through HttpOnly cookies.
+- Correct pending approval screens.
+- Correct email verification screens.
+- Proper error handling.
+- Loading and retry states.
+
+Do not redesign the existing UI unless API integration requires a minimal change.
+
+# 18. ERROR HANDLING
+
+Use consistent API error responses.
+
+Example:
+
+```json
+{
+  "success": false,
+  "code": "INVALID_CREDENTIALS",
+  "message": "Invalid email or password"
+}
+```
+
+Required error codes:
+
+- INVALID_EMAIL_DOMAIN
+- EMAIL_ALREADY_EXISTS
+- INVALID_CAPTCHA
+- INVALID_CREDENTIALS
+- EMAIL_NOT_VERIFIED
+- ACCOUNT_PENDING_APPROVAL
+- ACCOUNT_REJECTED
+- ACCOUNT_SUSPENDED
+- TOKEN_EXPIRED
+- TOKEN_INVALID
+- TOKEN_REUSED
+- INVALID_RESET_TOKEN
+- SESSION_REVOKED
+- RATE_LIMIT_EXCEEDED
+- VALIDATION_ERROR
+
+Do not expose database errors, internal stack traces or sensitive implementation details.
+
+# 19. TESTING REQUIREMENTS
+
+Implement unit and integration tests.
+
+## Registration tests
+
+- Valid IMD email registration.
+- Invalid email domain rejection.
+- Malformed email rejection.
+- Duplicate email rejection.
+- Invalid CAPTCHA rejection.
+- Expired CAPTCHA rejection.
+- Password hashing verification.
+- Registration creates pending account.
+- Public admin registration rejection.
+
+## Login tests
+
+- Correct credentials.
+- Incorrect credentials.
+- Unverified email.
+- Pending approval account.
+- Rejected account.
+- Suspended account.
+- Invalid CAPTCHA.
+- Rate-limited login.
+- Successful token generation.
+
+## Token tests
+
+- Valid access token.
+- Expired access token.
+- Valid refresh token.
+- Refresh token rotation.
+- Old refresh token rejection.
+- Refresh token reuse detection.
+- Logout invalidates session.
+- Logout-all revokes all sessions.
+
+## Password recovery tests
+
+- Valid reset request.
+- Unknown email returns generic response.
+- Invalid reset token.
+- Expired reset token.
+- Successful password reset.
+- Old password rejection.
+- Existing sessions revoked after reset.
+
+## Authorization tests
+
+- Admin access.
+- Trainer access.
+- Trainee access.
+- Unauthorized role access.
+- Missing authentication token.
+- Suspended user access.
+
+All critical authentication tests must pass before marking the module complete.
+
+# 20. IMPLEMENTATION ORDER
+
+Claude CLI must implement this module in the following order.
+
+**Step 1 — Project inspection**
+
+Inspect the existing frontend and repository. Identify authentication components, routes, contexts, form fields and dependencies.
+
+Do not modify the frontend unnecessarily.
+
+**Step 2 — Backend initialization**
+
+Set up NestJS, TypeScript, configuration validation, global validation and API versioning.
+
+**Step 3 — Neon and Prisma**
+
+Connect to Neon PostgreSQL. Configure pooled runtime connections and direct migration connections. Create the initial Prisma schema and migrations.
+
+**Step 4 — User and role models**
+
+Implement User, Role, RefreshSession, EmailVerificationToken, PasswordResetToken and AuditLog.
+
+**Step 5 — Security services**
+
+Implement Argon2id, Turnstile verification, IMD domain validation and token utilities.
+
+**Step 6 — Registration**
+
+Implement registration, duplicate checks, account creation and email verification.
+
+**Step 7 — Login**
+
+Implement credential validation, account status verification, JWT creation and session storage.
+
+**Step 8 — Refresh and logout**
+
+Implement refresh token rotation, session revocation and logout-all.
+
+**Step 9 — Password management**
+
+Implement email verification, forgot password, reset password and change password.
+
+**Step 10 — Authorization**
+
+Implement JWT guards, role guards and protected routes.
+
+**Step 11 — Frontend integration**
+
+Connect existing React authentication screens to the backend.
+
+**Step 12 — Testing and security review**
+
+Run all tests, inspect security controls and document API usage.
+
+Do not start implementing unrelated modules.
+
+# 21. ACCEPTANCE CRITERIA
+
+Module 1 is complete only when:
+
+- Trainer registration works.
+- Trainee registration works.
+- Only approved IMD email domains are accepted.
+- Cloudflare Turnstile verification works on the backend.
+- Passwords are hashed using Argon2id.
+- Email verification works.
+- Admin approval is enforced before login.
+- JWT authentication works.
+- Refresh token rotation works.
+- Logout and session revocation work.
+- Password recovery works.
+- RBAC works.
+- Existing frontend authentication screens are integrated.
+- All critical tests pass.
+- API documentation is generated.
+- No credentials or secrets are committed.
+
+# 22. IMPORTANT IMPLEMENTATION RULES FOR CLAUDE CLI
+
+1. Inspect the existing project before making changes.
+2. Do not rebuild the completed frontend.
+3. Do not introduce a new frontend framework.
+4. Use TypeScript consistently.
+5. Use NestJS module boundaries.
+6. Use Neon PostgreSQL as the only primary database.
+7. Use Prisma for database access and migrations.
+8. Use Argon2id for password hashing.
+9. Use Cloudflare Turnstile for CAPTCHA.
+10. Never trust frontend authentication or authorization checks.
+11. Never store plaintext passwords or tokens.
+12. Never create a public Admin registration endpoint.
+13. Never bypass email verification or account approval.
+14. Do not implement unrelated business modules.
+15. Do not hardcode secrets or credentials.
+16. Do not use mock authentication in production paths.
+17. Write tests alongside each implementation stage.
+18. Keep the implementation compatible with the existing frontend.
+19. Document every environment variable and setup requirement.
+20. Do not mark features complete until their acceptance tests pass.
+
+**Execution instruction:** Work incrementally. After each major implementation stage, report the files created or modified, database changes, tests executed, test results and unresolved issues. Do not silently skip requirements.
+
+---
+
+# FINAL EXPECTED RESULT
+
+A secure, production-minded authentication system for Capacity Connect with:
+
+- Official IMD email validation.
+- Cloudflare Turnstile.
+- Argon2id password protection.
+- JWT authentication.
+- Refresh token rotation.
+- Email verification.
+- Admin approval enforcement.
+- Role-based access control.
+- Secure session management.
+- Neon PostgreSQL persistence through Prisma.
+
+**Scope boundary:** This document covers authentication and identity only. Full Admin approval management, user profile workflows, course management and other business modules will have their own architecture specifications. Authentication must enforce the account status produced by the approval workflow.

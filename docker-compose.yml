@@ -1,0 +1,54 @@
+services:
+  # Backend NestJS Application
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: capacityconnect_backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=${DATABASE_URL}
+      - DIRECT_URL=${DIRECT_URL}
+      - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
+      - JWT_ACCESS_EXPIRES_IN=${JWT_ACCESS_EXPIRES_IN:-15m}
+      - REFRESH_TOKEN_SECRET=${REFRESH_TOKEN_SECRET}
+      - REFRESH_TOKEN_EXPIRES_IN=${REFRESH_TOKEN_EXPIRES_IN:-7d}
+      - ARGON2_MEMORY_COST=${ARGON2_MEMORY_COST:-65536}
+      - ARGON2_TIME_COST=${ARGON2_TIME_COST:-3}
+      - ARGON2_PARALLELISM=${ARGON2_PARALLELISM:-4}
+      - CLOUDFLARE_TURNSTILE_SECRET_KEY=${CLOUDFLARE_TURNSTILE_SECRET_KEY}
+      - CLOUDFLARE_TURNSTILE_SITE_KEY=${CLOUDFLARE_TURNSTILE_SITE_KEY}
+      - IMD_ALLOWED_EMAIL_DOMAINS=${IMD_ALLOWED_EMAIL_DOMAINS:-imd.gov.in,moes.gov.in}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL}
+      - CORS_ORIGIN=http://localhost:80,http://localhost:5173
+      - FRONTEND_URL=http://localhost:80
+    networks:
+      - capacity_net
+
+  # Frontend React Web Application
+  frontend:
+    build:
+      context: ./capacityconnect---frontend
+      dockerfile: Dockerfile
+    container_name: capacityconnect_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - capacity_net
+
+networks:
+  capacity_net:
+    driver: bridge
