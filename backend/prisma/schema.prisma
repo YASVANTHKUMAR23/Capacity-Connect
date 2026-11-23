@@ -1,4 +1,4 @@
-// Prisma schema for Capacity Connect - Module 01: Authentication & Identity Management
+// Prisma schema for Capacity Connect - Unified PostgreSQL Database (All Portals)
 
 datasource db {
   provider  = "postgresql"
@@ -9,6 +9,10 @@ datasource db {
 generator client {
   provider = "prisma-client-js"
 }
+
+// ----------------------------------------------------
+// ENUMS
+// ----------------------------------------------------
 
 enum Role {
   ADMIN
@@ -38,6 +42,58 @@ enum AuditEventType {
   SESSION_REVOCATION
 }
 
+enum CourseStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum CourseLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum EnrollmentStatus {
+  ENROLLED
+  IN_PROGRESS
+  COMPLETED
+  DROPPED
+}
+
+enum AssessmentType {
+  DIAGNOSTIC
+  QUIZ
+  MIDTERM
+  FINAL
+  CERTIFICATION
+}
+
+enum QuestionType {
+  MCQ
+  MULTI_SELECT
+  TRUE_FALSE
+}
+
+enum MentorshipStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  COMPLETED
+  CANCELLED
+}
+
+enum AnnouncementStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+// ----------------------------------------------------
+// AUTHENTICATION & CORE USER MODELS
+// ----------------------------------------------------
+
 model User {
   id              String        @id @default(uuid()) @db.Uuid
   fullName        String
@@ -51,10 +107,38 @@ model User {
   createdAt       DateTime      @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime      @updatedAt @db.Timestamptz(6)
 
+  // Auth Relations
   refreshSessions        RefreshSession[]
   emailVerificationTokens EmailVerificationToken[]
   passwordResetTokens    PasswordResetToken[]
   auditLogs              AuditLog[]
+
+  // Profile Relations
+  profile                UserProfile?
+  trainerProfile         TrainerProfile?
+  traineeProfile         TraineeProfile?
+  qualifications         UserQualification[]
+  workExperiences        UserWorkExperience[]
+  skills                 UserSkill[]
+  evidences              ProfileEvidence[]
+
+  // Application Relations
+  authoredCourses        Course[]               @relation("CourseAuthor")
+  assignedCourses        CourseTrainer[]
+  enrollments            CourseEnrollment[]
+  lessonProgress         LessonProgress[]
+  studyActivities        StudyActivity[]
+  authoredAssessments    Assessment[]           @relation("AssessmentAuthor")
+  assessmentAttempts     AssessmentAttempt[]
+  competencyScores       UserCompetencyScore[]
+  mentorProfile          MentorProfile?
+  requestedMentorships   MentorRequest[]        @relation("TraineeMentorRequests")
+  receivedReviews        CourseReview[]
+  receivedFeedback       CourseFeedback[]
+  feedbackReplies        FeedbackReply[]
+  notificationRecipients NotificationRecipient[]
+  issuedCertificates     Certificate[]          @relation("TraineeCertificates")
+  authoredAnnouncements  Announcement[]         @relation("AnnouncementAuthor")
 
   @@index([email])
   @@index([role])
@@ -126,4 +210,615 @@ model AuditLog {
   @@index([eventType])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// ----------------------------------------------------
+// MODULE A: ORGANIZATIONS, DIVISIONS & PROFILES
+// ----------------------------------------------------
+
+model Organization {
+  id        String     @id @default(uuid()) @db.Uuid
+  name      String
+  code      String     @unique
+  divisions Division[]
+  createdAt DateTime   @default(now()) @db.Timestamptz(6)
+
+  @@map("organizations")
+}
+
+model Division {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @db.Uuid
+  name           String
+  zone           String?
+  color          String?       @default("#1f5eff")
+  userProfiles   UserProfile[]
+  createdAt      DateTime      @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("divisions")
+}
+
+model UserProfile {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @unique @db.Uuid
+  divisionId     String?   @db.Uuid
+  employeeId     String?
+  phone          String?
+  officeLocation String?   @default("New Delhi")
+  avatarUrl      String?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  division Division? @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+
+  @@map("user_profiles")
+}
+
+model TrainerProfile {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @unique @db.Uuid
+  roleTitle        String   @default("Senior Scientist / Lead Trainer")
+  specialization   String   @default("Tropical Cyclones & Satellite Meteorology")
+  division         String   @default("Cyclone Warning Division")
+  yearsExperience  Int      @default(12)
+  profileStrength  Int      @default(94)
+  bio              String?
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("trainer_profiles")
+}
+
+model TraineeProfile {
+  id                  String   @id @default(uuid()) @db.Uuid
+  userId              String   @unique @db.Uuid
+  stationOffice       String   @default("Regional Meteorological Centre, New Delhi")
+  designation         String   @default("Scientist B")
+  onboardingCompleted Boolean  @default(false)
+  createdAt           DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("trainee_profiles")
+}
+
+model UserQualification {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  degree      String
+  institution String
+  year        String
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_qualifications")
+}
+
+model UserWorkExperience {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  role         String
+  organization String
+  duration     String
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_work_experiences")
+}
+
+model UserSkill {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  name      String
+  isSpecial Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_skills")
+}
+
+model ProfileEvidence {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  fileName    String
+  fileUrl     String?
+  provider    String   @default("IMD Training Institute")
+  year        String   @default("2024")
+  isVerified  Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("profile_evidence")
+}
+
+// ----------------------------------------------------
+// MODULE B: COURSES, MODULES, LESSONS & RESOURCES
+// ----------------------------------------------------
+
+model CourseCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  code      String   @unique
+  courses   Course[]
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("course_categories")
+}
+
+model Course {
+  id             String         @id @default(uuid()) @db.Uuid
+  code           String         @unique
+  title          String
+  description    String
+  categoryId     String         @db.Uuid
+  authorId       String         @db.Uuid
+  institution    String         @default("India Meteorological Department")
+  level          CourseLevel    @default(INTERMEDIATE)
+  duration       String         @default("4 weeks")
+  imageUrl       String?
+  status         CourseStatus   @default(ACTIVE)
+  deadline       String?
+  createdAt      DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime       @updatedAt @db.Timestamptz(6)
+
+  category       CourseCategory     @relation(fields: [categoryId], references: [id])
+  author         User               @relation("CourseAuthor", fields: [authorId], references: [id])
+  trainers       CourseTrainer[]
+  modules        CourseModule[]
+  enrollments    CourseEnrollment[]
+  assessments    Assessment[]
+  reviews        CourseReview[]
+  feedback       CourseFeedback[]
+  competencies   CourseCompetency[]
+  materials      LearningMaterial[]
+
+  @@index([categoryId])
+  @@index([authorId])
+  @@index([status])
+  @@map("courses")
+}
+
+model CourseTrainer {
+  id        String   @id @default(uuid()) @db.Uuid
+  courseId  String   @db.Uuid
+  userId    String   @db.Uuid
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, userId])
+  @@map("course_trainers")
+}
+
+model CourseModule {
+  id              String         @id @default(uuid()) @db.Uuid
+  courseId        String         @db.Uuid
+  title           String
+  description     String?
+  sequenceNumber  Int            @default(1)
+  durationMinutes Int            @default(120)
+  createdAt       DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime       @updatedAt @db.Timestamptz(6)
+
+  course      Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons     CourseLesson[]
+  assessments Assessment[]
+
+  @@index([courseId])
+  @@map("course_modules")
+}
+
+model CourseLesson {
+  id              String           @id @default(uuid()) @db.Uuid
+  moduleId        String           @db.Uuid
+  title           String
+  description     String?
+  contentType     String           @default("VIDEO") // VIDEO, DOCUMENT, QUIZ, INTERACTIVE
+  contentUrl      String?
+  durationMinutes Int              @default(30)
+  sequenceNumber  Int              @default(1)
+  createdAt       DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(6)
+
+  module   CourseModule     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  progress LessonProgress[]
+
+  @@index([moduleId])
+  @@map("course_lessons")
+}
+
+// ----------------------------------------------------
+// MODULE C: ENROLLMENTS & LEARNING PROGRESS
+// ----------------------------------------------------
+
+model CourseEnrollment {
+  id                   String           @id @default(uuid()) @db.Uuid
+  courseId             String           @db.Uuid
+  userId               String           @db.Uuid
+  status               EnrollmentStatus @default(ENROLLED)
+  completionPercentage Int              @default(0)
+  enrolledAt           DateTime         @default(now()) @db.Timestamptz(6)
+  completedAt          DateTime?        @db.Timestamptz(6)
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, userId])
+  @@index([userId])
+  @@index([courseId])
+  @@map("course_enrollments")
+}
+
+model LessonProgress {
+  id           String    @id @default(uuid()) @db.Uuid
+  lessonId     String    @db.Uuid
+  userId       String    @db.Uuid
+  isCompleted  Boolean   @default(false)
+  positionSec  Int       @default(0)
+  completedAt  DateTime? @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(6)
+
+  lesson CourseLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([lessonId, userId])
+  @@map("lesson_progress")
+}
+
+model StudyActivity {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  day       String   // e.g. "Mon", "Tue"
+  hours     Float    @default(0.0)
+  topic     String
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("study_activities")
+}
+
+// ----------------------------------------------------
+// MODULE D: ASSESSMENTS, QUESTIONS & ENGINE
+// ----------------------------------------------------
+
+model Assessment {
+  id               String         @id @default(uuid()) @db.Uuid
+  courseId         String?        @db.Uuid
+  moduleId         String?        @db.Uuid
+  authorId         String         @db.Uuid
+  title            String
+  type             AssessmentType @default(QUIZ)
+  timeLimitMinutes Int            @default(30)
+  totalMarks       Int            @default(100)
+  passMarks        Int            @default(60)
+  maxAttempts      Int            @default(3)
+  createdAt        DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime       @updatedAt @db.Timestamptz(6)
+
+  course    Course?              @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  module    CourseModule?        @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  author    User                 @relation("AssessmentAuthor", fields: [authorId], references: [id])
+  questions AssessmentQuestion[]
+  attempts  AssessmentAttempt[]
+
+  @@index([courseId])
+  @@map("assessments")
+}
+
+model AssessmentQuestion {
+  id             String             @id @default(uuid()) @db.Uuid
+  assessmentId   String             @db.Uuid
+  prompt         String
+  explanation    String?
+  type           QuestionType       @default(MCQ)
+  points         Int                @default(10)
+  sequenceNumber Int                @default(1)
+  createdAt      DateTime           @default(now()) @db.Timestamptz(6)
+
+  assessment Assessment         @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  options    AssessmentOption[]
+  answers    AssessmentAnswer[]
+
+  @@index([assessmentId])
+  @@map("assessment_questions")
+}
+
+model AssessmentOption {
+  id         String   @id @default(uuid()) @db.Uuid
+  questionId String   @db.Uuid
+  text       String
+  isCorrect  Boolean  @default(false) // Backend secret
+  indexNum   Int      @default(0)
+
+  question AssessmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+  @@map("assessment_options")
+}
+
+model AssessmentAttempt {
+  id              String             @id @default(uuid()) @db.Uuid
+  assessmentId    String             @db.Uuid
+  userId          String             @db.Uuid
+  attemptNumber   Int                @default(1)
+  score           Float              @default(0.0)
+  passed          Boolean            @default(false)
+  timeTakenSec    Int                @default(0)
+  submittedAt     DateTime           @default(now()) @db.Timestamptz(6)
+
+  assessment Assessment         @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers    AssessmentAnswer[]
+
+  @@index([assessmentId])
+  @@index([userId])
+  @@map("assessment_attempts")
+}
+
+model AssessmentAnswer {
+  id         String  @id @default(uuid()) @db.Uuid
+  attemptId  String  @db.Uuid
+  questionId String  @db.Uuid
+  selectedId String? @db.Uuid
+  isCorrect  Boolean @default(false)
+
+  attempt  AssessmentAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question AssessmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([attemptId])
+  @@map("assessment_answers")
+}
+
+// ----------------------------------------------------
+// MODULE E: COMPETENCIES & MATRIX
+// ----------------------------------------------------
+
+model Competency {
+  id          String                @id @default(uuid()) @db.Uuid
+  name        String                @unique
+  category    String                @default("Core Meteorology")
+  description String?
+  color       String                @default("#1f5eff")
+  scores      UserCompetencyScore[]
+  courses     CourseCompetency[]
+  createdAt   DateTime              @default(now()) @db.Timestamptz(6)
+
+  @@map("competencies")
+}
+
+model CourseCompetency {
+  id           String   @id @default(uuid()) @db.Uuid
+  courseId     String   @db.Uuid
+  competencyId String   @db.Uuid
+
+  course     Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  competency Competency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, competencyId])
+  @@map("course_competencies")
+}
+
+model UserCompetencyScore {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  competencyId String   @db.Uuid
+  score        Float    @default(70.0)
+  targetScore  Float    @default(85.0)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  competency Competency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, competencyId])
+  @@map("user_competency_scores")
+}
+
+// ----------------------------------------------------
+// MODULE F: MENTORSHIP
+// ----------------------------------------------------
+
+model MentorProfile {
+  id             String          @id @default(uuid()) @db.Uuid
+  userId         String          @unique @db.Uuid
+  title          String          @default("Chief Meteorologist & Mentor")
+  organization   String          @default("IMD Regional Centre")
+  specialty      String          @default("Severe Storms & Radar")
+  isAvailable    Boolean         @default(true)
+  requests       MentorRequest[]
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("mentor_profiles")
+}
+
+model MentorRequest {
+  id        String           @id @default(uuid()) @db.Uuid
+  mentorId  String           @db.Uuid
+  traineeId String           @db.Uuid
+  topic     String
+  status    MentorshipStatus @default(PENDING)
+  notes     String?
+  createdAt DateTime         @default(now()) @db.Timestamptz(6)
+
+  mentor  MentorProfile @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+  trainee User          @relation("TraineeMentorRequests", fields: [traineeId], references: [id], onDelete: Cascade)
+
+  @@index([mentorId])
+  @@index([traineeId])
+  @@map("mentor_requests")
+}
+
+// ----------------------------------------------------
+// MODULE G: LEARNING MATERIALS & REPOSITORY
+// ----------------------------------------------------
+
+model LearningMaterial {
+  id          String   @id @default(uuid()) @db.Uuid
+  courseId    String?  @db.Uuid
+  title       String
+  category    String   @default("Manual")
+  fileFormat  String   @default("PDF")
+  fileSize    String   @default("4.2 MB")
+  fileUrl     String
+  downloads   Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  course Course? @relation(fields: [courseId], references: [id], onDelete: SetNull)
+
+  @@map("learning_materials")
+}
+
+// ----------------------------------------------------
+// MODULE H: COURSE FEEDBACK & REVIEWS
+// ----------------------------------------------------
+
+model CourseReview {
+  id        String   @id @default(uuid()) @db.Uuid
+  courseId  String   @db.Uuid
+  userId    String   @db.Uuid
+  rating    Int      @default(5)
+  comment   String?
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("course_reviews")
+}
+
+model CourseFeedback {
+  id        String          @id @default(uuid()) @db.Uuid
+  courseId  String          @db.Uuid
+  userId    String          @db.Uuid
+  rating    Int             @default(5)
+  metrics   Json?           // { clarity: 5, pacing: 4, depth: 5 }
+  comment   String?
+  replies   FeedbackReply[]
+  createdAt DateTime        @default(now()) @db.Timestamptz(6)
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("course_feedback")
+}
+
+model FeedbackReply {
+  id         String   @id @default(uuid()) @db.Uuid
+  feedbackId String   @db.Uuid
+  authorId   String   @db.Uuid
+  message    String
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  feedback CourseFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  author   User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@map("feedback_replies")
+}
+
+// ----------------------------------------------------
+// MODULE I: ANNOUNCEMENTS & NOTIFICATIONS
+// ----------------------------------------------------
+
+model Announcement {
+  id        String             @id @default(uuid()) @db.Uuid
+  authorId  String             @db.Uuid
+  title     String
+  message   String
+  type      String             @default("Announcement") // Announcement, Maintenance, Policy, New content, Achievement
+  status    AnnouncementStatus @default(PUBLISHED)
+  date      String             @default("Today")
+  publishOn String?            @default("Today")
+  isPinned  Boolean            @default(false)
+  imageUrl  String?
+  createdAt DateTime           @default(now()) @db.Timestamptz(6)
+
+  author User @relation("AnnouncementAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@map("announcements")
+}
+
+model Notification {
+  id         String                  @id @default(uuid()) @db.Uuid
+  title      String
+  message    String
+  type       String                  @default("info")
+  recipients NotificationRecipient[]
+  createdAt  DateTime                @default(now()) @db.Timestamptz(6)
+
+  @@map("notifications")
+}
+
+model NotificationRecipient {
+  id             String   @id @default(uuid()) @db.Uuid
+  notificationId String   @db.Uuid
+  userId         String   @db.Uuid
+  isRead         Boolean  @default(false)
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId])
+  @@map("notification_recipients")
+}
+
+// ----------------------------------------------------
+// MODULE J: CERTIFICATES
+// ----------------------------------------------------
+
+model Certificate {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  title          String
+  issuer         String   @default("India Meteorological Department (MoES)")
+  verificationNo String   @unique
+  issueDate      String
+  fileUrl        String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation("TraineeCertificates", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("certificates")
+}
+
+// ----------------------------------------------------
+// MODULE K: SETTINGS & GOVERNANCE
+// ----------------------------------------------------
+
+model PortalSettings {
+  id                    String   @id @default(uuid()) @db.Uuid
+  portalName            String   @default("Capacity Connect - India Meteorological Department")
+  defaultLanguage       String   @default("English")
+  timeZone              String   @default("Asia/Kolkata")
+  supportEmail          String   @default("support.capacity@imd.gov.in")
+  requireAdminApproval  Boolean  @default(true)
+  restrictOrgEmails     Boolean  @default(true)
+  detectTabSwitching    Boolean  @default(true)
+  allowRetakes          Boolean  @default(true)
+  sendDeadlineReminders Boolean  @default(true)
+  maintenanceMode       Boolean  @default(false)
+  allowPublicSignup     Boolean  @default(true)
+  retakesAllowed        Boolean  @default(true)
+  updatedAt             DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("portal_settings")
 }

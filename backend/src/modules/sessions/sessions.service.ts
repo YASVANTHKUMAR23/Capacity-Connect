@@ -38,6 +38,13 @@ export class SessionService {
     userAgent?: string,
     ipAddress?: string,
   ): Promise<{ userId: string; newRefreshToken: string; sessionId: string }> {
+    if (!rawRefreshToken || typeof rawRefreshToken !== 'string') {
+      throw new UnauthorizedException({
+        code: ERROR_CODES.TOKEN_INVALID,
+        message: 'No refresh token provided',
+      });
+    }
+
     const hash = this.tokenService.hashOpaqueToken(rawRefreshToken);
 
     const session = await this.prisma.refreshSession.findUnique({
@@ -102,6 +109,9 @@ export class SessionService {
   }
 
   async revokeSessionByToken(rawRefreshToken: string, ipAddress?: string, userAgent?: string): Promise<void> {
+    if (!rawRefreshToken || typeof rawRefreshToken !== 'string') {
+      return;
+    }
     const hash = this.tokenService.hashOpaqueToken(rawRefreshToken);
     const session = await this.prisma.refreshSession.findUnique({ where: { tokenHash: hash } });
 

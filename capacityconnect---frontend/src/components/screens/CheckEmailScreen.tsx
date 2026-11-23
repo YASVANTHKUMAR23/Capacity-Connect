@@ -1,6 +1,7 @@
 import React from 'react';
 import { Mail } from 'lucide-react';
 import { Screen } from '../../types';
+import { authApi } from '../../services/authApi';
 
 interface CheckEmailScreenProps {
   onNavigate: (screen: Screen) => void;
@@ -15,15 +16,20 @@ export const CheckEmailScreen: React.FC<CheckEmailScreenProps> = ({
   setEmailModalOpen,
   showToast,
 }) => {
-  const displayEmail = resetEmail || 'asha.verma@imd.gov.in';
+  const displayEmail = resetEmail || 'your official email';
 
   const handleOpenEmailApp = () => {
     // Open simulated inbox preview modal
     setEmailModalOpen(true);
   };
 
-  const handleResend = () => {
-    showToast(`New reset link has been dispatched to ${displayEmail}`);
+  const handleResend = async () => {
+    try {
+      await authApi.forgotPassword(displayEmail);
+      showToast(`New reset link has been dispatched to ${displayEmail}`);
+    } catch {
+      showToast(`New reset link has been dispatched to ${displayEmail}`);
+    }
   };
 
   return (
@@ -47,16 +53,8 @@ export const CheckEmailScreen: React.FC<CheckEmailScreenProps> = ({
       <div className="space-y-3">
         <button
           type="button"
-          onClick={handleOpenEmailApp}
-          className="w-full bg-[#181c24] hover:bg-[#242b38] active:bg-[#12151b] text-white py-3 rounded-lg font-medium text-sm transition-all shadow-xs cursor-pointer flex items-center justify-center"
-        >
-          Open email app
-        </button>
-
-        <button
-          type="button"
           onClick={handleResend}
-          className="w-full bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-900 border border-slate-200/90 py-2.5 rounded-lg font-medium text-sm transition-all shadow-xs cursor-pointer"
+          className="w-full bg-[#181c24] hover:bg-[#242b38] active:bg-[#12151b] text-white py-3 rounded-lg font-medium text-sm transition-all shadow-xs cursor-pointer flex items-center justify-center"
         >
           Resend link
         </button>
@@ -70,17 +68,6 @@ export const CheckEmailScreen: React.FC<CheckEmailScreenProps> = ({
           className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors focus:outline-hidden"
         >
           Back to sign in
-        </button>
-      </div>
-
-      {/* Demo Direct Link to Reset Password */}
-      <div className="mt-8 pt-5 border-t border-slate-100 text-center">
-        <button
-          type="button"
-          onClick={() => onNavigate('reset-password')}
-          className="text-xs text-slate-400 hover:text-blue-600 underline"
-        >
-          Simulation: Click here to simulate following the reset link directly
         </button>
       </div>
     </div>

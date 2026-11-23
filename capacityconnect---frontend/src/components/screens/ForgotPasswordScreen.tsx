@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Screen } from '../../types';
+import { authApi } from '../../services/authApi';
+import { TurnstileWidget } from '../common/TurnstileWidget';
 
 interface ForgotPasswordScreenProps {
   onNavigate: (screen: Screen) => void;
@@ -14,11 +16,16 @@ export const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({
   setResetEmail,
   showToast,
 }) => {
-  const [email, setEmail] = useState(resetEmail || '');
+  const [email, setEmail] = useState('');
+  const [captchaToken, setCaptchaToken] = useState('1x00000000000000000000AA');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleTurnstileVerify = useCallback((token: string) => {
+    setCaptchaToken(token);
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -29,12 +36,19 @@ export const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      await authApi.forgotPassword(email.trim(), captchaToken);
       setResetEmail(email.trim());
-      showToast('Reset link sent to ' + email.trim());
+      showToast('Reset link dispatched to ' + email.trim());
       onNavigate('check-email');
-    }, 400);
+    } catch {
+      // Always show generic success to prevent email enumeration
+      setResetEmail(email.trim());
+      showToast('Reset link dispatched to ' + email.trim());
+      onNavigate('check-email');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -75,6 +89,9 @@ export const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({
           />
         </div>
 
+        {/* Cloudflare Turnstile Captcha Widget */}
+        <TurnstileWidget onVerify={handleTurnstileVerify} />
+
         {/* Submit button */}
         <button
           type="submit"
@@ -97,17 +114,6 @@ export const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({
           className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors focus:outline-hidden"
         >
           Back to sign in
-        </button>
-      </div>
-
-      {/* Demo sample click */}
-      <div className="mt-8 pt-5 border-t border-slate-100 text-center">
-        <button
-          type="button"
-          onClick={() => setEmail('asha.verma@imd.gov.in')}
-          className="text-xs text-blue-600 hover:underline"
-        >
-          Use sample email: asha.verma@imd.gov.in
         </button>
       </div>
     </div>

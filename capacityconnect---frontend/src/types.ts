@@ -1,6 +1,7 @@
 export type Screen =
   | 'login'
   | 'signup'
+  | 'verify-otp'
   | 'forgot-password'
   | 'check-email'
   | 'reset-password'

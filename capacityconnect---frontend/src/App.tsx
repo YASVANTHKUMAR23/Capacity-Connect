@@ -8,12 +8,14 @@ import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { SignInScreen } from './components/screens/SignInScreen';
 import { SignUpScreen } from './components/screens/SignUpScreen';
+import { VerifyOtpScreen } from './components/screens/VerifyOtpScreen';
 import { ForgotPasswordScreen } from './components/screens/ForgotPasswordScreen';
 import { CheckEmailScreen } from './components/screens/CheckEmailScreen';
 import { ResetPasswordScreen } from './components/screens/ResetPasswordScreen';
 import { PendingApprovalScreen } from './components/screens/PendingApprovalScreen';
 import { AccessDeniedScreen } from './components/screens/AccessDeniedScreen';
 import { EmailModal } from './components/EmailModal';
+import { authApi } from './services/authApi';
 
 // Admin Portal Pages
 import { AdminLayout } from './components/admin/AdminLayout';
@@ -57,21 +59,169 @@ import { TraineeCertificatesPage } from './components/trainee/TraineeCertificate
 import { TraineeLibraryPage } from './components/trainee/TraineeLibraryPage';
 import { TraineeSetupModal } from './components/trainee/TraineeSetupModal';
 
-import { Check, X } from 'lucide-react';
+import { Check, X, CloudSun } from 'lucide-react';
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<Screen>('login');
-  const [currentAdminTab, setCurrentAdminTab] = useState<AdminTab>('dashboard');
-  const [currentTrainerTab, setCurrentTrainerTab] = useState<TrainerTab>('dashboard');
-  const [currentTraineeTab, setCurrentTraineeTab] = useState<TraineeTab>('dashboard');
+  // Synchronize initial screen with URL pathname / query parameter (e.g. reset-password link from email)
+  const getInitialScreen = (): Screen => {
+    const rawPath = window.location.pathname.replace(/^\//, '').split('/')[0];
+    const search = window.location.search;
+    if (rawPath === 'reset-password' || search.includes('token=')) {
+      return 'reset-password';
+    }
+    if (rawPath === 'verify-otp') {
+      return 'verify-otp';
+    }
+    if (rawPath === 'signup') {
+      return 'signup';
+    }
+    if (rawPath === 'forgot-password') {
+      return 'forgot-password';
+    }
+    if (rawPath === 'check-email') {
+      return 'check-email';
+    }
+
+    const validScreens: Screen[] = [
+      'admin-portal',
+      'trainer-portal',
+      'trainee-portal',
+      'trainee-setup',
+      'pending-approval',
+      'access-denied',
+      'trainee-take-assessment',
+    ];
+    if (validScreens.includes(rawPath as Screen)) {
+      return rawPath as Screen;
+    }
+
+    const savedScreen = typeof window !== 'undefined' ? (localStorage.getItem('cc_active_screen') as Screen) : null;
+    if (savedScreen && validScreens.includes(savedScreen)) {
+      return savedScreen;
+    }
+
+    return 'login';
+  };
+
+  const isGuestAuthFlow =
+    typeof window !== 'undefined' &&
+    (window.location.pathname.includes('reset-password') ||
+      window.location.pathname.includes('verify-otp') ||
+      window.location.pathname.includes('signup') ||
+      window.location.pathname.includes('forgot-password') ||
+      window.location.pathname.includes('check-email') ||
+      window.location.search.includes('token='));
+
+  const hasToken =
+    typeof window !== 'undefined' &&
+    Boolean(localStorage.getItem('cc_access_token') || localStorage.getItem('cc_active_screen'));
+
+  const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(
+    !isGuestAuthFlow && (hasToken || (typeof window !== 'undefined' && (window.location.pathname === '/' || window.location.pathname.includes('portal'))))
+  );
+
+  const [currentScreen, setCurrentScreen] = useState<Screen>(getInitialScreen);
+
+  const [currentAdminTab, setCurrentAdminTab] = useState<AdminTab>(() => {
+    if (typeof window === 'undefined') return 'dashboard';
+    const searchParams = new URLSearchParams(window.location.search);
+    const tabParam = searchParams.get('tab') as AdminTab;
+    const validTabs: AdminTab[] = [
+      'dashboard',
+      'courses',
+      'trainers',
+      'trainees',
+      'role-management',
+      'announcements',
+      'analytics',
+      'competency',
+      'settings',
+    ];
+    if (tabParam && validTabs.includes(tabParam)) return tabParam;
+    const saved = localStorage.getItem('cc_active_admin_tab') as AdminTab;
+    if (saved && validTabs.includes(saved)) return saved;
+    return 'dashboard';
+  });
+
+  const [currentTrainerTab, setCurrentTrainerTab] = useState<TrainerTab>(() => {
+    if (typeof window === 'undefined') return 'dashboard';
+    const searchParams = new URLSearchParams(window.location.search);
+    const tabParam = searchParams.get('tab') as TrainerTab;
+    const validTabs: TrainerTab[] = [
+      'dashboard',
+      'my-courses',
+      'trainer-library',
+      'assessments',
+      'trainees',
+      'feedback',
+      'profile',
+      'notifications',
+    ];
+    if (tabParam && validTabs.includes(tabParam)) return tabParam;
+    const saved = localStorage.getItem('cc_active_trainer_tab') as TrainerTab;
+    if (saved && validTabs.includes(saved)) return saved;
+    return 'dashboard';
+  });
+
+  const [currentTraineeTab, setCurrentTraineeTab] = useState<TraineeTab>(() => {
+    if (typeof window === 'undefined') return 'dashboard';
+    const searchParams = new URLSearchParams(window.location.search);
+    const tabParam = searchParams.get('tab') as TraineeTab;
+    const validTabs: TraineeTab[] = [
+      'dashboard',
+      'my-courses',
+      'course-catalog',
+      'course-detail',
+      'assessments',
+      'my-competency',
+      'mentors',
+      'course-player',
+      'course-feedback',
+      'assessment-result',
+      'notifications',
+      'profile',
+      'certificates',
+      'library',
+    ];
+    if (tabParam && validTabs.includes(tabParam)) return tabParam;
+    const saved = localStorage.getItem('cc_active_trainee_tab') as TraineeTab;
+    if (saved && validTabs.includes(saved)) return saved;
+    return 'dashboard';
+  });
+
   const [activeAssessmentId, setActiveAssessmentId] = useState<string>('asmt-1');
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
-  const [resetEmail, setResetEmail] = useState<string>('asha.verma@imd.gov.in');
+  const [resetEmail, setResetEmail] = useState<string>('');
+  const [verificationEmail, setVerificationEmail] = useState<string>('');
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
+  };
+
+  const handleSelectAdminTab = (tab: AdminTab) => {
+    setCurrentAdminTab(tab);
+    localStorage.setItem('cc_active_admin_tab', tab);
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', tab);
+    window.history.replaceState({}, '', url.toString());
+  };
+
+  const handleSelectTrainerTab = (tab: TrainerTab) => {
+    setCurrentTrainerTab(tab);
+    localStorage.setItem('cc_active_trainer_tab', tab);
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', tab);
+    window.history.replaceState({}, '', url.toString());
+  };
+
+  const handleSelectTraineeTab = (tab: TraineeTab) => {
+    setCurrentTraineeTab(tab);
+    localStorage.setItem('cc_active_trainee_tab', tab);
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', tab);
+    window.history.replaceState({}, '', url.toString());
   };
 
   useEffect(() => {
@@ -81,6 +231,65 @@ export default function App() {
     }, 4000);
     return () => clearTimeout(timer);
   }, [toastMessage]);
+
+  // Session auto-restore on mount using backend /auth/me
+  useEffect(() => {
+    // If the user arrived directly via a password-reset link or OTP verification link, DO NOT redirect to dashboard
+    const isResetFlow = window.location.pathname.includes('reset-password') || window.location.search.includes('token=');
+    const isOtpFlow = window.location.pathname.includes('verify-otp');
+    if (isResetFlow || isOtpFlow) {
+      setIsCheckingAuth(false);
+      return;
+    }
+
+    const restoreSession = async () => {
+      try {
+        const res = await authApi.getMe();
+        if (res.data) {
+          const user = res.data;
+          const role = user.role.toLowerCase();
+          const account: UserAccount = {
+            firstName: user.fullName?.split(' ')[0] || 'User',
+            lastName: user.fullName?.split(' ').slice(1).join(' ') || '',
+            email: user.email,
+            organization: user.organization || 'India Meteorological Department',
+            role: role as any,
+            status: user.accountStatus?.toLowerCase() === 'active' ? 'approved' : 'pending',
+            submittedDate: 'Active',
+          };
+          setCurrentUser(account);
+
+          if (role === 'admin') {
+            setCurrentScreen('admin-portal');
+            localStorage.setItem('cc_active_screen', 'admin-portal');
+          } else if (role === 'trainer') {
+            setCurrentScreen('trainer-portal');
+            localStorage.setItem('cc_active_screen', 'trainer-portal');
+          } else {
+            // Trainee: Check if 4-step onboarding has been completed
+            const hasOnboarded = localStorage.getItem(`cc_onboarding_completed_${user.email}`) === 'true';
+            if (hasOnboarded) {
+              setCurrentScreen('trainee-portal');
+              localStorage.setItem('cc_active_screen', 'trainee-portal');
+            } else {
+              setCurrentScreen('trainee-setup');
+              localStorage.setItem('cc_active_screen', 'trainee-setup');
+            }
+          }
+        } else {
+          setCurrentScreen('login');
+          localStorage.removeItem('cc_active_screen');
+        }
+      } catch {
+        // Not authenticated or session expired; keep login screen
+        setCurrentScreen('login');
+        localStorage.removeItem('cc_active_screen');
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+    restoreSession();
+  }, []);
 
   // Route gating: strictly enforce admin approval before granting dashboard/resource access
   useEffect(() => {
@@ -95,8 +304,33 @@ export default function App() {
 
   const handleNavigate = (screen: Screen) => {
     setCurrentScreen(screen);
+    localStorage.setItem('cc_active_screen', screen);
+    // Keep browser address bar in sync for reload/bookmarking/back button support
+    const targetPath = screen === 'login' ? '/' : `/${screen}`;
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({ screen }, '', targetPath);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-[#fafbfc] flex flex-col items-center justify-center p-4 selection:bg-blue-600 selection:text-white">
+        <div className="flex flex-col items-center gap-4 text-center max-w-sm animate-in fade-in duration-300">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-cyan-500 text-white flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <CloudSun className="w-7 h-7 animate-pulse" />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-slate-900 tracking-tight">Capacity Connect</h2>
+            <p className="text-xs text-slate-500 font-medium">India Meteorological Department • MoES</p>
+          </div>
+          <div className="w-32 h-1 bg-slate-200/80 rounded-full overflow-hidden mt-2">
+            <div className="w-1/2 h-full bg-blue-600 rounded-full animate-pulse" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <UnifiedDataProvider>
@@ -123,12 +357,12 @@ export default function App() {
             {currentScreen === 'trainer-portal' ? (
               <TrainerLayout
                 currentTab={currentTrainerTab}
-                onSelectTab={setCurrentTrainerTab}
+                onSelectTab={handleSelectTrainerTab}
                 onNavigateScreen={handleNavigate}
                 showToast={showToast}
               >
                 {currentTrainerTab === 'dashboard' && (
-                  <TrainerDashboardPage onSelectTab={setCurrentTrainerTab} showToast={showToast} />
+                  <TrainerDashboardPage onSelectTab={handleSelectTrainerTab} showToast={showToast} />
                 )}
                 {currentTrainerTab === 'my-courses' && (
                   <TrainerCoursesPage showToast={showToast} />
@@ -149,18 +383,18 @@ export default function App() {
                   <TrainerProfilePage showToast={showToast} />
                 )}
                 {currentTrainerTab === 'notifications' && (
-                  <TrainerNotificationsPage onSelectTab={setCurrentTrainerTab} showToast={showToast} />
+                  <TrainerNotificationsPage onSelectTab={handleSelectTrainerTab} showToast={showToast} />
                 )}
               </TrainerLayout>
             ) : currentScreen === 'admin-portal' ? (
               <AdminLayout
                 currentTab={currentAdminTab}
-                onSelectTab={setCurrentAdminTab}
+                onSelectTab={handleSelectAdminTab}
                 onNavigateScreen={handleNavigate}
                 showToast={showToast}
               >
                 {currentAdminTab === 'dashboard' && (
-                  <DashboardPage onNavigateTab={setCurrentAdminTab} showToast={showToast} />
+                  <DashboardPage onNavigateTab={handleSelectAdminTab} showToast={showToast} />
                 )}
                 {currentAdminTab === 'courses' && <CoursesPage showToast={showToast} />}
                 {currentAdminTab === 'trainers' && <TrainersPage showToast={showToast} />}
@@ -181,6 +415,9 @@ export default function App() {
               /* Gated 4-Step Trainee Profile Setup Flow (Screens 01-04: No sidebar/navbar) */
               <TraineeSetupModal
                 onComplete={() => {
+                  if (currentUser?.email) {
+                    localStorage.setItem(`cc_onboarding_completed_${currentUser.email}`, 'true');
+                  }
                   setCurrentScreen('trainee-portal');
                   setCurrentTraineeTab('dashboard');
                   showToast('Profile setup complete! Welcome to Capacity Connect.');
@@ -205,31 +442,31 @@ export default function App() {
               /* Trainee Portal (Screens 05-20) */
               <TraineeLayout
                 currentTab={currentTraineeTab}
-                onSelectTab={setCurrentTraineeTab}
+                onSelectTab={handleSelectTraineeTab}
                 onNavigateScreen={handleNavigate}
                 showToast={showToast}
               >
                 {currentTraineeTab === 'dashboard' && (
-                  <TraineeDashboardPage onSelectTab={setCurrentTraineeTab} showToast={showToast} />
+                  <TraineeDashboardPage onSelectTab={handleSelectTraineeTab} showToast={showToast} />
                 )}
                 {currentTraineeTab === 'course-catalog' && (
-                  <TraineeCourseCatalogPage onSelectTab={setCurrentTraineeTab} showToast={showToast} />
+                  <TraineeCourseCatalogPage onSelectTab={handleSelectTraineeTab} showToast={showToast} />
                 )}
                 {currentTraineeTab === 'course-detail' && (
-                  <TraineeCourseDetailPage onSelectTab={setCurrentTraineeTab} showToast={showToast} />
+                  <TraineeCourseDetailPage onSelectTab={handleSelectTraineeTab} showToast={showToast} />
                 )}
                 {currentTraineeTab === 'my-courses' && (
-                  <TraineeMyCoursesPage onSelectTab={setCurrentTraineeTab} showToast={showToast} />
+                  <TraineeMyCoursesPage onSelectTab={handleSelectTraineeTab} showToast={showToast} />
                 )}
                 {currentTraineeTab === 'course-player' && (
-                  <TraineeCoursePlayerPage onSelectTab={setCurrentTraineeTab} showToast={showToast} />
+                  <TraineeCoursePlayerPage onSelectTab={handleSelectTraineeTab} showToast={showToast} />
                 )}
                 {currentTraineeTab === 'course-feedback' && (
-                  <TraineeCourseFeedbackPage onSelectTab={setCurrentTraineeTab} showToast={showToast} />
+                  <TraineeCourseFeedbackPage onSelectTab={handleSelectTraineeTab} showToast={showToast} />
                 )}
                 {currentTraineeTab === 'assessments' && (
                   <TraineeAssessmentsPage
-                    onSelectTab={setCurrentTraineeTab}
+                    onSelectTab={handleSelectTraineeTab}
                     onStartAssessment={(asmtId) => {
                       setActiveAssessmentId(asmtId);
                       setCurrentScreen('trainee-take-assessment');
@@ -238,25 +475,25 @@ export default function App() {
                   />
                 )}
                 {currentTraineeTab === 'assessment-result' && (
-                  <TraineeAssessmentResultPage onSelectTab={setCurrentTraineeTab} showToast={showToast} />
+                  <TraineeAssessmentResultPage onSelectTab={handleSelectTraineeTab} showToast={showToast} />
                 )}
                 {currentTraineeTab === 'my-competency' && (
-                  <TraineeCompetencyPage onSelectTab={setCurrentTraineeTab} showToast={showToast} />
+                  <TraineeCompetencyPage onSelectTab={handleSelectTraineeTab} showToast={showToast} />
                 )}
                 {currentTraineeTab === 'mentors' && (
-                  <TraineeMentorsPage onSelectTab={setCurrentTraineeTab} showToast={showToast} />
+                  <TraineeMentorsPage onSelectTab={handleSelectTraineeTab} showToast={showToast} />
                 )}
                 {currentTraineeTab === 'notifications' && (
-                  <TraineeNotificationsPage onSelectTab={setCurrentTraineeTab} showToast={showToast} />
+                  <TraineeNotificationsPage onSelectTab={handleSelectTraineeTab} showToast={showToast} />
                 )}
                 {currentTraineeTab === 'profile' && (
-                  <TraineeProfilePage onSelectTab={setCurrentTraineeTab} showToast={showToast} />
+                  <TraineeProfilePage onSelectTab={handleSelectTraineeTab} showToast={showToast} />
                 )}
                 {currentTraineeTab === 'certificates' && (
-                  <TraineeCertificatesPage onSelectTab={setCurrentTraineeTab} showToast={showToast} />
+                  <TraineeCertificatesPage onSelectTab={handleSelectTraineeTab} showToast={showToast} />
                 )}
                 {currentTraineeTab === 'library' && (
-                  <TraineeLibraryPage onSelectTab={setCurrentTraineeTab} showToast={showToast} />
+                  <TraineeLibraryPage onSelectTab={handleSelectTraineeTab} showToast={showToast} />
                 )}
               </TraineeLayout>
             ) : (
@@ -273,11 +510,22 @@ export default function App() {
                       currentUser={currentUser}
                       setCurrentUser={setCurrentUser}
                       showToast={showToast}
+                      setVerificationEmail={setVerificationEmail}
                     />
                   )}
 
                   {currentScreen === 'signup' && (
                     <SignUpScreen
+                      onNavigate={handleNavigate}
+                      setCurrentUser={setCurrentUser}
+                      showToast={showToast}
+                      setVerificationEmail={setVerificationEmail}
+                    />
+                  )}
+
+                  {currentScreen === 'verify-otp' && (
+                    <VerifyOtpScreen
+                      email={verificationEmail}
                       onNavigate={handleNavigate}
                       setCurrentUser={setCurrentUser}
                       showToast={showToast}
@@ -330,14 +578,6 @@ export default function App() {
 
                 {/* Footer */}
                 <Footer />
-
-                {/* Simulated Email Client Modal */}
-                <EmailModal
-                  isOpen={emailModalOpen}
-                  onClose={() => setEmailModalOpen(false)}
-                  resetEmail={resetEmail}
-                  onNavigate={handleNavigate}
-                />
               </div>
             )}
           </div>

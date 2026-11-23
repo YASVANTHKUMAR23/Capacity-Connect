@@ -16,6 +16,7 @@ export class AuditService {
     metadata?: any;
   }): Promise<void> {
     try {
+      this.logger.log(`[AUDIT] Event: ${params.eventType} | User: ${params.userId || 'Anonymous'} | IP: ${params.ipAddress || 'Unknown'}`);
       await this.prisma.auditLog.create({
         data: {
           userId: params.userId || null,

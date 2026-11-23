@@ -1,20 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { Screen, UserAccount, UserRole } from '../../types';
-import { useUnifiedData } from '../../context/UnifiedDataContext';
+import { authApi } from '../../services/authApi';
+import { TurnstileWidget } from '../common/TurnstileWidget';
+import { PasswordCriteria } from '../common/PasswordCriteria';
+import { TermsModal } from '../common/TermsModal';
 
 interface SignUpScreenProps {
   onNavigate: (screen: Screen) => void;
   setCurrentUser: (user: UserAccount | null) => void;
   showToast: (msg: string) => void;
+  setVerificationEmail?: (email: string) => void;
 }
 
 export const SignUpScreen: React.FC<SignUpScreenProps> = ({
   onNavigate,
   setCurrentUser,
   showToast,
+  setVerificationEmail,
 }) => {
-  const unified = useUnifiedData();
   const [role, setRole] = useState<UserRole>('trainee');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -23,10 +27,16 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
+  const [isTermsOpen, setIsTermsOpen] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState('1x00000000000000000000AA');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleTurnstileVerify = useCallback((token: string) => {
+    setCaptchaToken(token);
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -35,11 +45,11 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({
       return;
     }
     if (!email.trim()) {
-      setError('Please provide your work email address');
+      setError('Please provide your official work email address');
       return;
     }
-    if (!password || password.length < 8) {
-      setError('Password must be at least 8 characters long');
+    if (!password || password.length < 12) {
+      setError('Password must be at least 12 characters long according to security policy');
       return;
     }
     if (!agreeTerms) {
@@ -49,20 +59,30 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      setIsLoading(false);
-      const newUser = unified.registerNewProfile({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
+    try {
+      const fullName = `${firstName.trim()} ${lastName.trim()}`;
+      
+      // Real backend registration
+      await authApi.register({
+        fullName,
         email: email.trim(),
-        organization: organization.trim() || 'Regional Meteorological Centre',
-        role: role,
+        password,
+        role: role.toUpperCase() as 'TRAINER' | 'TRAINEE',
+        organization: organization.trim() || 'India Meteorological Department',
+        captchaToken,
       });
 
-      setCurrentUser(newUser);
-      showToast(`Registration submitted for ${role}. Awaiting administrator approval.`);
-      onNavigate('pending-approval');
-    }, 450);
+      if (setVerificationEmail) {
+        setVerificationEmail(email.trim());
+      }
+
+      showToast('Registration successful! Please check your email for the 6-digit OTP code.');
+      onNavigate('verify-otp');
+    } catch (err: any) {
+      setError(err?.message || 'Registration failed. Please verify your details.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -73,7 +93,7 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({
           Create your account
         </h1>
         <p className="text-[15px] text-slate-500 mt-2 font-normal leading-relaxed">
-          Choose how you will use the portal. An admin reviews every new account.
+          Choose your role. An official IMD email (@imd.gov.in) is required for registration.
         </p>
       </div>
 
@@ -103,6 +123,7 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({
         </button>
       </div>
 
+      {/* Error alert */}
       {error && (
         <div className="mb-5 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
           {error}
@@ -111,9 +132,9 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Name Fields */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
+        {/* Name inputs */}
+        <div className="flex gap-3">
+          <div className="flex-1">
             <label 
               htmlFor="firstName" 
               className="block text-sm font-medium text-slate-800 mb-1.5"
@@ -125,11 +146,11 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({
               type="text"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
-              placeholder="Asha"
+              placeholder="e.g. Asha"
               className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-sm placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 transition-all shadow-xs"
             />
           </div>
-          <div>
+          <div className="flex-1">
             <label 
               htmlFor="lastName" 
               className="block text-sm font-medium text-slate-800 mb-1.5"
@@ -141,37 +162,37 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({
               type="text"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
-              placeholder="Verma"
+              placeholder="e.g. Verma"
               className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-sm placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 transition-all shadow-xs"
             />
           </div>
         </div>
 
-        {/* Work email */}
+        {/* Email */}
         <div>
           <label 
-            htmlFor="workEmail" 
+            htmlFor="signupEmail" 
             className="block text-sm font-medium text-slate-800 mb-1.5"
           >
-            Work email
+            Official IMD Email
           </label>
           <input
-            id="workEmail"
+            id="signupEmail"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="name@organization.gov.in"
+            placeholder="officer@imd.gov.in"
             className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-sm placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 transition-all shadow-xs"
           />
         </div>
 
-        {/* Organization */}
+        {/* Organization / Division */}
         <div>
           <label 
             htmlFor="organization" 
             className="block text-sm font-medium text-slate-800 mb-1.5"
           >
-            Organization or division
+            Station / Division (Optional)
           </label>
           <input
             id="organization"
@@ -189,7 +210,7 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({
             htmlFor="signupPassword" 
             className="block text-sm font-medium text-slate-800 mb-1.5"
           >
-            Password
+            Password (min 12 characters)
           </label>
           <div className="relative">
             <input
@@ -197,7 +218,7 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 8 characters"
+              placeholder="Minimum 12 characters"
               className="w-full px-3.5 py-2.5 pr-10 bg-white border border-slate-300 rounded-lg text-slate-900 text-sm placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 transition-all shadow-xs"
             />
             <button
@@ -213,9 +234,10 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({
               )}
             </button>
           </div>
+          <PasswordCriteria password={password} />
         </div>
 
-        {/* Terms checkbox */}
+        {/* Terms checkbox with modal link */}
         <div className="pt-1">
           <label className="flex items-start gap-2.5 cursor-pointer select-none">
             <input
@@ -225,10 +247,36 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({
               className="w-4 h-4 mt-0.5 rounded text-slate-900 bg-white border-slate-300 focus:ring-slate-900 focus:ring-offset-0 accent-slate-900 cursor-pointer"
             />
             <span className="text-sm text-slate-600 leading-snug">
-              I agree to the terms of use and privacy policy
+              I agree to the{' '}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsTermsOpen(true);
+                }}
+                className="underline text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
+              >
+                terms of use
+              </button>{' '}
+              and{' '}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsTermsOpen(true);
+                }}
+                className="underline text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
+              >
+                privacy policy
+              </button>
             </span>
           </label>
         </div>
+
+        {/* Cloudflare Turnstile Captcha Widget */}
+        <TurnstileWidget onVerify={handleTurnstileVerify} />
 
         {/* Create account button */}
         <div className="pt-2">
@@ -257,25 +305,12 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({
           Sign in
         </button>
       </div>
-
-      {/* Preset sample autofill */}
-      <div className="mt-8 pt-5 border-t border-slate-100 text-center">
-        <button
-          type="button"
-          onClick={() => {
-            setRole('trainee');
-            setFirstName('Asha');
-            setLastName('Verma');
-            setEmail('asha.verma@imd.gov.in');
-            setOrganization('Regional Meteorological Centre');
-            setPassword('WeatherSec@2026');
-            setAgreeTerms(true);
-          }}
-          className="text-xs text-blue-600 hover:underline"
-        >
-          Autofill with Asha Verma sample data
-        </button>
-      </div>
+      {/* Terms and Conditions Modal */}
+      <TermsModal
+        isOpen={isTermsOpen}
+        onClose={() => setIsTermsOpen(false)}
+        onAccept={() => setAgreeTerms(true)}
+      />
     </div>
   );
 };

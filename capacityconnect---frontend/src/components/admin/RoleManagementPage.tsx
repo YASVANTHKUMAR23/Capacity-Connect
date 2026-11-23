@@ -351,7 +351,7 @@ export const RoleManagementPage: React.FC<RoleManagementPageProps> = ({ showToas
 
         {/* Desktop Pagination (preserved for non-mobile views) */}
         <div className="hidden sm:flex items-center justify-between pt-5 border-t border-slate-100 text-xs text-slate-500">
-          <span>Showing 1-{filteredDirectory.length} of 1,346</span>
+          <span>Showing 1-{filteredDirectory.length} of {filteredDirectory.length}</span>
           <div className="flex items-center gap-2">
             <button
               type="button"

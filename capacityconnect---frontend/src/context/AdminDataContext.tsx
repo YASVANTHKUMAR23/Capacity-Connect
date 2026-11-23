@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState } from 'react';
-import { useUnifiedData, MonthData, DivisionItem, CompetencyGaugeItem, SubjectScoreItem } from './UnifiedDataContext';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { adminApi, DashboardMetricsResponse } from '../services/adminApi';
 import {
   AnnouncementItem,
   CourseItem,
@@ -10,629 +10,383 @@ import {
   TrainerItem,
   UserDirectoryItem,
 } from '../types';
+import { MonthData, DivisionItem, CompetencyGaugeItem, SubjectScoreItem } from './UnifiedDataContext';
 
 interface AdminDataContextType {
   announcements: AnnouncementItem[];
-  addAnnouncement: (item: Omit<AnnouncementItem, 'id'>) => void;
-  updateAnnouncement: (id: string, updates: Partial<AnnouncementItem>) => void;
-  deleteAnnouncement: (id: string) => void;
+  addAnnouncement: (item: Omit<AnnouncementItem, 'id'>) => Promise<void>;
+  updateAnnouncement: (id: string, updates: Partial<AnnouncementItem>) => Promise<void>;
+  deleteAnnouncement: (id: string) => Promise<void>;
   selectedAnnouncementId: string;
   setSelectedAnnouncementId: (id: string) => void;
   pinnedAnnouncement: AnnouncementItem | undefined;
 
   pendingApprovals: PendingApprovalItem[];
-  approveUser: (id: string) => void;
-  rejectUser: (id: string, reason?: string) => void;
+  approveUser: (id: string) => Promise<void>;
+  rejectUser: (id: string, reason?: string) => Promise<void>;
   rejectedRecords: RejectedUserRecord[];
 
   userDirectory: UserDirectoryItem[];
-  updateUserRole: (id: string, role: 'Trainer' | 'Trainee' | 'Admin') => void;
+  updateUserRole: (id: string, role: 'Trainer' | 'Trainee' | 'Admin') => Promise<void>;
 
   trainers: TrainerItem[];
-  updateTrainer: (id: string, updates: Partial<TrainerItem>) => void;
+  updateTrainer: (id: string, updates: Partial<TrainerItem>) => Promise<void>;
   trainees: TraineeItem[];
-  updateTrainee: (id: string, updates: Partial<TraineeItem>) => void;
+  updateTrainee: (id: string, updates: Partial<TraineeItem>) => Promise<void>;
   courses: CourseItem[];
-  updateCourse: (id: string, updates: Partial<CourseItem>) => void;
+  createCourse: (data: Partial<CourseItem>) => Promise<void>;
+  updateCourse: (id: string, updates: Partial<CourseItem>) => Promise<void>;
+  deleteCourse: (id: string) => Promise<void>;
 
   // Real Application Data for Graphs
   monthlyEnrollments: MonthData[];
   divisions: DivisionItem[];
-  addDivision: (division: Omit<DivisionItem, 'id'>) => void;
+  addDivision: (division: Omit<DivisionItem, 'id'>) => Promise<void>;
   competencyGauge: CompetencyGaugeItem[];
+  createCompetency: (data: Partial<CompetencyGaugeItem>) => Promise<void>;
+  updateCompetency: (id: string, updates: Partial<CompetencyGaugeItem>) => Promise<void>;
+  deleteCompetency: (id: string) => Promise<void>;
   subjectScores: SubjectScoreItem[];
 
   settings: PortalSettings;
-  updateSettings: (updates: Partial<PortalSettings>) => void;
+  updateSettings: (updates: Partial<PortalSettings>) => Promise<void>;
 
   isChatbotOpen: boolean;
   setIsChatbotOpen: (open: boolean) => void;
+
+  refreshAllData: () => Promise<void>;
+  isLoading: boolean;
 }
 
-const initialAnnouncements: AnnouncementItem[] = [
-  {
-    id: 'ann-1',
-    title: 'Cyclone season training begins',
-    type: 'Announcement',
-    status: 'Published',
-    date: '18 Oct',
-    message:
-      'New cyclone tracking modules open to all trainees on 1 November. Enroll before 30 November to receive your certificate.',
-    publishOn: '25 Oct 2026, 09:00',
-    isPinned: true,
-    imageUrl: 'https://images.unsplash.com/photo-1527482797697-8795b05a13fe?w=800&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'ann-2',
-    title: 'Radar course update released',
-    type: 'New content',
-    status: 'Published',
-    date: '16 Oct',
-    message:
-      'S-band radar interpretation lessons have been refreshed with the latest Doppler dataset from Chennai and Kolkata radars.',
-    publishOn: '16 Oct 2026, 11:30',
-    isPinned: false,
-    imageUrl: 'https://images.unsplash.com/photo-1504608524841-42fe6f032b4b?w=800&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'ann-3',
-    title: '500 certifications crossed',
-    type: 'Achievement',
-    status: 'Published',
-    date: '12 Oct',
-    message:
-      'Over 500 meteorologists across all IMD Regional Centres have completed the INSAT-3DR satellite imagery interpretation track.',
-    publishOn: '12 Oct 2026, 14:00',
-    isPinned: false,
-    imageUrl: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=800&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'ann-4',
-    title: 'Server maintenance Sunday',
-    type: 'Notification',
-    status: 'Scheduled',
-    date: '25 Oct',
-    message:
-      'Portal services will undergo routine database optimization and backup between 02:00 AM and 05:00 AM IST on Sunday.',
-    publishOn: '25 Oct 2026, 02:00',
-    isPinned: false,
-    imageUrl: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=800&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'ann-5',
-    title: 'Winter module preview',
-    type: 'New content',
-    status: 'Draft',
-    date: '—',
-    message:
-      'Early preview of Western Disturbances forecasting and fog density detection modules for northern plain divisions.',
-    publishOn: '28 Oct 2026, 10:00',
-    isPinned: false,
-    imageUrl: 'https://images.unsplash.com/photo-1483921020237-2ff51e8e4b22?w=800&auto=format&fit=crop&q=80',
-  },
-];
-
-const initialPending: PendingApprovalItem[] = [
-  {
-    id: 'p-1',
-    name: 'Kiran Joshi',
-    email: 'kiran.joshi@imd.gov.in',
-    division: 'Bengaluru',
-    roleRequested: 'Trainer',
-    submitted: 'Today',
-    initials: 'KJ',
-    avatarBg: 'bg-rose-100 text-rose-800',
-  },
-  {
-    id: 'p-2',
-    name: 'Sana Ahmed',
-    email: 'sana.ahmed@imd.gov.in',
-    division: 'Hyderabad',
-    roleRequested: 'Trainee',
-    submitted: 'Today',
-    initials: 'SA',
-    avatarBg: 'bg-purple-100 text-purple-800',
-  },
-  {
-    id: 'p-3',
-    name: 'Vikram Patel',
-    email: 'vikram.p@imd.gov.in',
-    division: 'Ahmedabad',
-    roleRequested: 'Trainee',
-    submitted: 'Yesterday',
-    initials: 'VP',
-    avatarBg: 'bg-amber-100 text-amber-800',
-  },
-  {
-    id: 'p-4',
-    name: 'Rhea Menon',
-    email: 'rhea.menon@imd.gov.in',
-    division: 'Kochi',
-    roleRequested: 'Trainer',
-    submitted: '2 days ago',
-    initials: 'RM',
-    avatarBg: 'bg-orange-100 text-orange-800',
-  },
-];
-
-const initialDirectory: UserDirectoryItem[] = [
-  {
-    id: 'u-ref-1',
-    name: 'Brandon Lee',
-    email: 'brandon.lee@email.com',
-    role: 'Editor',
-    status: 'Active',
-    joined: 'Aug 2026',
-    initials: 'BL',
-    avatarBg: 'bg-indigo-100 text-indigo-800',
-  },
-  {
-    id: 'u-ref-2',
-    name: 'Clara Johnson',
-    email: 'clara.johnson@email.com',
-    role: 'Viewer',
-    status: 'Active',
-    joined: 'Aug 2026',
-    initials: 'CJ',
-    avatarBg: 'bg-emerald-100 text-emerald-800',
-  },
-  {
-    id: 'u-ref-3',
-    name: 'Daniel Smith',
-    email: 'daniel.smith@email.com',
-    role: 'Admin',
-    status: 'Active',
-    joined: 'Jul 2026',
-    initials: 'DS',
-    avatarBg: 'bg-purple-100 text-purple-800',
-  },
-  {
-    id: 'u-ref-4',
-    name: 'Emma Wilson',
-    email: 'emma.wilson@email.com',
-    role: 'Editor',
-    status: 'Active',
-    joined: 'Jun 2026',
-    initials: 'EW',
-    avatarBg: 'bg-amber-100 text-amber-800',
-  },
-  {
-    id: 'u-ref-5',
-    name: 'Frank Miller',
-    email: 'frank.miller@email.com',
-    role: 'Viewer',
-    status: 'Active',
-    joined: 'May 2026',
-    initials: 'FM',
-    avatarBg: 'bg-sky-100 text-sky-800',
-  },
-  {
-    id: 'u-ref-6',
-    name: 'Grace Taylor',
-    email: 'grace.taylor@email.com',
-    role: 'Admin',
-    status: 'Active',
-    joined: 'May 2026',
-    initials: 'GT',
-    avatarBg: 'bg-rose-100 text-rose-800',
-  },
-  {
-    id: 'u-1',
-    name: 'Asha Verma',
-    email: 'asha.verma@imd.gov.in',
-    role: 'Trainee',
-    status: 'Active',
-    joined: 'Aug 2026',
-    initials: 'AV',
-    avatarBg: 'bg-blue-100 text-blue-800',
-  },
-  {
-    id: 'u-2',
-    name: 'Dr. Ravi Menon',
-    email: 'ravi.menon@imd.gov.in',
-    role: 'Trainer',
-    status: 'Active',
-    joined: 'Jun 2026',
-    initials: 'DR',
-    avatarBg: 'bg-amber-100 text-amber-800',
-  },
-  {
-    id: 'u-3',
-    name: 'Meera Iyer',
-    email: 'meera.iyer@imd.gov.in',
-    role: 'Trainer',
-    status: 'Active',
-    joined: 'Jun 2026',
-    initials: 'MI',
-    avatarBg: 'bg-amber-100 text-amber-800',
-  },
-  {
-    id: 'u-4',
-    name: 'Imran Sheikh',
-    email: 'imran.sheikh@imd.gov.in',
-    role: 'Trainee',
-    status: 'Suspended',
-    joined: 'Jul 2026',
-    initials: 'IS',
-    avatarBg: 'bg-blue-100 text-blue-800',
-  },
-];
-
-const initialTrainers: TrainerItem[] = [
-  {
-    id: 'tr-1',
-    name: 'Dr. Ravi Menon',
-    email: 'ravi.menon@imd.gov.in',
-    expertise: 'Cyclone tracking',
-    coursesCount: 4,
-    traineesCount: 214,
-    lastActive: 'Today',
-    status: 'Active',
-    initials: 'DR',
-    avatarBg: 'bg-amber-100 text-amber-800',
-  },
-  {
-    id: 'tr-2',
-    name: 'Dr. Anita Rao',
-    email: 'anita.rao@imd.gov.in',
-    expertise: 'Numerical models',
-    coursesCount: 6,
-    traineesCount: 356,
-    lastActive: 'Today',
-    status: 'Active',
-    initials: 'DA',
-    avatarBg: 'bg-emerald-100 text-emerald-800',
-  },
-  {
-    id: 'tr-3',
-    name: 'Prof. Sunil Das',
-    email: 'sunil.das@imd.gov.in',
-    expertise: 'Climate data',
-    coursesCount: 3,
-    traineesCount: 298,
-    lastActive: 'Yesterday',
-    status: 'Active',
-    initials: 'PS',
-    avatarBg: 'bg-blue-100 text-blue-800',
-  },
-  {
-    id: 'tr-4',
-    name: 'Meera Iyer',
-    email: 'meera.iyer@imd.gov.in',
-    expertise: 'Instrumentation',
-    coursesCount: 2,
-    traineesCount: 187,
-    lastActive: '2 days ago',
-    status: 'Active',
-    initials: 'MI',
-    avatarBg: 'bg-amber-100 text-amber-800',
-  },
-  {
-    id: 'tr-5',
-    name: 'Karthik Nair',
-    email: 'karthik.nair@imd.gov.in',
-    expertise: 'Agromet advisory',
-    coursesCount: 0,
-    traineesCount: 0,
-    lastActive: '64 days ago',
-    status: 'Inactive',
-    initials: 'KN',
-    avatarBg: 'bg-emerald-100 text-emerald-800',
-  },
-  {
-    id: 'tr-6',
-    name: 'Farah Khan',
-    email: 'farah.khan@imd.gov.in',
-    expertise: 'Radar analysis',
-    coursesCount: 3,
-    traineesCount: 142,
-    lastActive: 'Today',
-    status: 'Active',
-    initials: 'FK',
-    avatarBg: 'bg-teal-100 text-teal-800',
-  },
-  {
-    id: 'tr-7',
-    name: 'Dr. Pooja Sen',
-    email: 'pooja.sen@imd.gov.in',
-    expertise: 'Ocean forecasting',
-    coursesCount: 0,
-    traineesCount: 0,
-    lastActive: '91 days ago',
-    status: 'Inactive',
-    initials: 'DP',
-    avatarBg: 'bg-rose-100 text-rose-800',
-  },
-];
-
-const initialTrainees: TraineeItem[] = [
-  {
-    id: 'tn-1',
-    name: 'Asha Verma',
-    email: 'asha.verma@imd.gov.in',
-    division: 'New Delhi',
-    enrolledCount: 3,
-    avgProgress: 72,
-    lastActive: 'Today',
-    status: 'Active',
-    initials: 'AV',
-    avatarBg: 'bg-blue-100 text-blue-800',
-  },
-  {
-    id: 'tn-2',
-    name: 'Rohit Sharma',
-    email: 'rohit.sharma@imd.gov.in',
-    division: 'Pune',
-    enrolledCount: 2,
-    avgProgress: 54,
-    lastActive: 'Today',
-    status: 'Active',
-    initials: 'RS',
-    avatarBg: 'bg-rose-100 text-rose-800',
-  },
-  {
-    id: 'tn-3',
-    name: 'Divya Pillai',
-    email: 'divya.pillai@imd.gov.in',
-    division: 'Thiruvananthapuram',
-    enrolledCount: 4,
-    avgProgress: 88,
-    lastActive: 'Yesterday',
-    status: 'Active',
-    initials: 'DP',
-    avatarBg: 'bg-pink-100 text-pink-800',
-  },
-  {
-    id: 'tn-4',
-    name: 'Imran Sheikh',
-    email: 'imran.sheikh@imd.gov.in',
-    division: 'Mumbai',
-    enrolledCount: 1,
-    avgProgress: 12,
-    lastActive: '48 days ago',
-    status: 'Inactive',
-    initials: 'IS',
-    avatarBg: 'bg-sky-100 text-sky-800',
-  },
-  {
-    id: 'tn-5',
-    name: 'Lakshmi Narayan',
-    email: 'lakshmi.n@imd.gov.in',
-    division: 'Chennai',
-    enrolledCount: 3,
-    avgProgress: 65,
-    lastActive: 'Today',
-    status: 'Active',
-    initials: 'LN',
-    avatarBg: 'bg-indigo-100 text-indigo-800',
-  },
-  {
-    id: 'tn-6',
-    name: 'Arjun Bose',
-    email: 'arjun.bose@imd.gov.in',
-    division: 'Kolkata',
-    enrolledCount: 2,
-    avgProgress: 31,
-    lastActive: '3 days ago',
-    status: 'Active',
-    initials: 'AB',
-    avatarBg: 'bg-amber-100 text-amber-800',
-  },
-  {
-    id: 'tn-7',
-    name: 'Neha Kulkarni',
-    email: 'neha.k@imd.gov.in',
-    division: 'Nagpur',
-    enrolledCount: 1,
-    avgProgress: 0,
-    lastActive: '72 days ago',
-    status: 'Inactive',
-    initials: 'NK',
-    avatarBg: 'bg-purple-100 text-purple-800',
-  },
-];
-
-const initialCourses: CourseItem[] = [
-  {
-    id: 'c-1',
-    title: 'Cyclone Track Analysis',
-    category: 'Meteorology',
-    trainer: 'Dr. Ravi Menon',
-    enrolled: 214,
-    completion: 38,
-    deadline: '30 Nov 2026',
-    status: 'Active',
-    initials: 'CT',
-    avatarBg: 'bg-amber-100 text-amber-800',
-  },
-  {
-    id: 'c-2',
-    title: 'Numerical Weather Models',
-    category: 'Forecasting',
-    trainer: 'Dr. Anita Rao',
-    enrolled: 356,
-    completion: 47,
-    deadline: '15 Dec 2026',
-    status: 'Active',
-    initials: 'NW',
-    avatarBg: 'bg-purple-100 text-purple-800',
-  },
-  {
-    id: 'c-3',
-    title: 'Climate Data Handling',
-    category: 'Climatology',
-    trainer: 'Prof. Sunil Das',
-    enrolled: 298,
-    completion: 76,
-    deadline: '05 Nov 2026',
-    status: 'Active',
-    initials: 'CD',
-    avatarBg: 'bg-blue-100 text-blue-800',
-  },
-  {
-    id: 'c-4',
-    title: 'Radar Data Quality',
-    category: 'Instrumentation',
-    trainer: 'Meera Iyer',
-    enrolled: 187,
-    completion: 44,
-    deadline: '20 Nov 2026',
-    status: 'Active',
-    initials: 'RD',
-    avatarBg: 'bg-rose-100 text-rose-800',
-  },
-  {
-    id: 'c-5',
-    title: 'Satellite Imagery Basics',
-    category: 'Remote sensing',
-    trainer: 'Farah Khan',
-    enrolled: 242,
-    completion: 61,
-    deadline: '10 Dec 2026',
-    status: 'Active',
-    initials: 'SI',
-    avatarBg: 'bg-indigo-100 text-indigo-800',
-  },
-  {
-    id: 'c-6',
-    title: 'Agromet Advisory Services',
-    category: 'Agrometeorology',
-    trainer: 'Dr. Pooja Sen',
-    enrolled: 133,
-    completion: 82,
-    deadline: '28 Oct 2026',
-    status: 'Active',
-    initials: 'AA',
-    avatarBg: 'bg-emerald-100 text-emerald-800',
-  },
-];
-
-const initialSettings: PortalSettings = {
-  portalName: 'Capacity Connect',
+const defaultSettings: PortalSettings = {
+  portalName: 'Capacity Connect - India Meteorological Department',
   defaultLanguage: 'English',
-  timeZone: 'India Standard Time (UTC+5:30)',
-  supportEmail: 'support@imd.gov.in',
+  timeZone: 'Asia/Kolkata',
+  supportEmail: 'support.capacity@imd.gov.in',
   requireAdminApproval: true,
   restrictOrgEmails: true,
   detectTabSwitching: true,
-  allowRetakes: false,
+  allowRetakes: true,
   sendDeadlineReminders: true,
 };
 
 const AdminDataContext = createContext<AdminDataContextType | undefined>(undefined);
 
 export const AdminDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const unified = useUnifiedData();
-  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>(initialAnnouncements);
-  const [selectedAnnouncementId, setSelectedAnnouncementId] = useState<string>('ann-1');
-  const [settings, setSettings] = useState<PortalSettings>(initialSettings);
+  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
+  const [selectedAnnouncementId, setSelectedAnnouncementId] = useState<string>('');
+  const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalItem[]>([]);
+  const [rejectedRecords, setRejectedRecords] = useState<RejectedUserRecord[]>([]);
+  const [userDirectory, setUserDirectory] = useState<UserDirectoryItem[]>([]);
+  const [trainers, setTrainers] = useState<TrainerItem[]>([]);
+  const [trainees, setTrainees] = useState<TraineeItem[]>([]);
+  const [courses, setCourses] = useState<CourseItem[]>([]);
+  const [competencyGauge, setCompetencyGauge] = useState<CompetencyGaugeItem[]>([]);
+  const [divisions, setDivisions] = useState<DivisionItem[]>([]);
+  const [monthlyEnrollments, setMonthlyEnrollments] = useState<MonthData[]>([]);
+  const [settings, setSettings] = useState<PortalSettings>(defaultSettings);
   const [isChatbotOpen, setIsChatbotOpen] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Sync courses with unified shared courses
-  const courses: CourseItem[] = unified.sharedCourses.map((c) => ({
-    id: c.id,
-    title: c.title,
-    category: c.category,
-    trainer: c.trainer,
-    enrolled: c.enrolled,
-    completion: c.completionRate,
-    deadline: c.deadline,
-    status: c.status === 'Draft' ? 'Inactive' : 'Active',
-    initials: c.initials,
-    avatarBg: c.avatarBg,
+  const isFetchingRef = useRef(false);
+
+  // Subject scores dynamically derived from real competencies
+  const subjectScores: SubjectScoreItem[] = competencyGauge.map((c) => ({
+    subject: c.subject,
+    score: c.level || 75,
   }));
-
-  // Sync pending approvals, user directory, trainers and trainees directly with unified state
-  const pendingApprovals = unified.pendingApprovals;
-  const userDirectory = unified.userDirectory;
-  const trainers = unified.trainersRoster;
-  const trainees = unified.traineesRoster;
-  const rejectedRecords = unified.rejectedRecords.length > 0 ? unified.rejectedRecords : [
-    {
-      id: 'rej-1',
-      name: 'Ramesh Sundaram',
-      email: 'ramesh.s@external-corp.in',
-      division: 'Kolkata',
-      roleRequested: 'Trainer' as const,
-      rejectedDate: '18 Oct 2026',
-      reason: 'Official IMD / MoES domain email required for trainer credential verification.',
-    },
-  ];
 
   const pinnedAnnouncement = announcements.find((a) => a.isPinned) || announcements[0];
 
-  const addAnnouncement = (item: Omit<AnnouncementItem, 'id'>) => {
-    const newId = `ann-${Date.now()}`;
-    const newAnn: AnnouncementItem = { ...item, id: newId };
-    if (newAnn.isPinned) {
-      setAnnouncements((prev) => [
-        newAnn,
-        ...prev.map((a) => ({ ...a, isPinned: false })),
+  // Primary data synchronization function with backend Prisma database
+  const refreshAllData = useCallback(async () => {
+    // Only fetch if authenticated to avoid throwing 401s when logged out
+    const token = getAccessToken();
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
+    try {
+      const [
+        annList,
+        pendingList,
+        rejectedList,
+        dirList,
+        trainersList,
+        traineesList,
+        coursesList,
+        compList,
+        settingsData,
+        metricsData,
+      ] = await Promise.allSettled([
+        adminApi.getAnnouncements(),
+        adminApi.getPendingApprovals(),
+        adminApi.getRejectedUsers(),
+        adminApi.getUserDirectory(),
+        adminApi.getTrainers(),
+        adminApi.getTrainees(),
+        adminApi.getCourses(),
+        adminApi.getCompetencies(),
+        adminApi.getSettings(),
+        adminApi.getDashboardMetrics(),
       ]);
-    } else {
-      setAnnouncements((prev) => [newAnn, ...prev]);
-    }
-    setSelectedAnnouncementId(newId);
-  };
 
-  const updateAnnouncement = (id: string, updates: Partial<AnnouncementItem>) => {
-    setAnnouncements((prev) =>
-      prev.map((a) => {
-        if (a.id === id) {
-          return { ...a, ...updates };
-        }
-        if (updates.isPinned) {
-          return { ...a, isPinned: false };
-        }
-        return a;
-      })
-    );
-  };
-
-  const deleteAnnouncement = (id: string) => {
-    setAnnouncements((prev) => prev.filter((a) => a.id !== id));
-    if (selectedAnnouncementId === id) {
-      const remaining = announcements.filter((a) => a.id !== id);
-      if (remaining.length > 0) {
-        setSelectedAnnouncementId(remaining[0].id);
+      if (annList.status === 'fulfilled' && annList.value) {
+        setAnnouncements(annList.value);
+        setSelectedAnnouncementId((prev) => {
+          if (prev) return prev;
+          const pinned = annList.value.find((a) => a.isPinned);
+          return pinned ? pinned.id : annList.value[0]?.id || '';
+        });
       }
+
+      if (pendingList.status === 'fulfilled' && pendingList.value) {
+        setPendingApprovals(pendingList.value);
+      }
+
+      if (rejectedList.status === 'fulfilled' && rejectedList.value) {
+        setRejectedRecords(rejectedList.value);
+      }
+
+      if (dirList.status === 'fulfilled' && dirList.value) {
+        setUserDirectory(dirList.value);
+      }
+
+      if (trainersList.status === 'fulfilled' && trainersList.value) {
+        setTrainers(trainersList.value);
+      }
+
+      if (traineesList.status === 'fulfilled' && traineesList.value) {
+        setTrainees(traineesList.value);
+      }
+
+      if (coursesList.status === 'fulfilled' && coursesList.value) {
+        setCourses(coursesList.value);
+      }
+
+      if (compList.status === 'fulfilled' && compList.value) {
+        setCompetencyGauge(compList.value);
+      }
+
+      if (settingsData.status === 'fulfilled' && settingsData.value) {
+        setSettings(settingsData.value);
+      }
+
+      if (metricsData.status === 'fulfilled' && metricsData.value) {
+        const m = metricsData.value as DashboardMetricsResponse;
+        if (m.divisionStats) setDivisions(m.divisionStats);
+        if (m.monthlyEnrollments) setMonthlyEnrollments(m.monthlyEnrollments);
+      }
+    } catch (err) {
+      console.warn('Failed to refresh admin portal data from DB:', err);
+    } finally {
+      setIsLoading(false);
+      isFetchingRef.current = false;
+    }
+  }, []);
+
+  // Initial load on mount
+  useEffect(() => {
+    refreshAllData();
+  }, [refreshAllData]);
+
+  // Dynamic DB polling: revalidate every 5 seconds & on window focus so external DB changes reflect immediately
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (getAccessToken()) {
+        refreshAllData();
+      }
+    }, 5000);
+
+    const handleFocus = () => {
+      if (getAccessToken()) {
+        refreshAllData();
+      }
+    };
+
+    const handleSessionExpired = () => {
+      setIsLoading(false);
+      isFetchingRef.current = false;
+    };
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('cc_session_expired', handleSessionExpired);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('cc_session_expired', handleSessionExpired);
+    };
+  }, [refreshAllData]);
+
+  // 1. Announcements CRUD with immediate database persistence
+  const addAnnouncement = async (item: Omit<AnnouncementItem, 'id'>) => {
+    try {
+      const created = await adminApi.createAnnouncement(item);
+      setSelectedAnnouncementId(created.id);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Failed to create announcement:', err);
+      throw err;
     }
   };
 
-  const approveUser = (id: string) => {
-    unified.approveProfileRequest(id);
+  const updateAnnouncement = async (id: string, updates: Partial<AnnouncementItem>) => {
+    try {
+      await adminApi.updateAnnouncement(id, updates);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Failed to update announcement:', err);
+      throw err;
+    }
   };
 
-  const rejectUser = (id: string, reason?: string) => {
-    unified.rejectProfileRequest(id, reason);
+  const deleteAnnouncement = async (id: string) => {
+    try {
+      await adminApi.deleteAnnouncement(id);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Failed to delete announcement:', err);
+      throw err;
+    }
   };
 
-  const updateUserRole = (id: string, newRole: 'Trainer' | 'Trainee' | 'Admin') => {
-    // If updating a user's role, we can also propagate it through unified
-    unified.approveProfileRequest(id);
+  // 2. User Governance CRUD with immediate database persistence
+  const approveUser = async (id: string) => {
+    try {
+      await adminApi.approveUser(id);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Failed to approve user:', err);
+      throw err;
+    }
   };
 
-  const updateCourse = (id: string, updates: Partial<CourseItem>) => {
-    unified.updateSharedCourse(id, {
-      title: updates.title,
-      category: updates.category,
-      trainer: updates.trainer,
-      enrolled: updates.enrolled,
-      completionRate: updates.completion,
-      status: updates.status === 'Inactive' ? 'Draft' : 'Active',
-    });
+  const rejectUser = async (id: string, reason?: string) => {
+    try {
+      await adminApi.rejectUser(id, reason);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Failed to reject user:', err);
+      throw err;
+    }
   };
 
-  const updateTrainer = (_id: string, _updates: Partial<TrainerItem>) => {
-    // Trainer roster updates
+  const updateUserRole = async (id: string, newRole: 'Trainer' | 'Trainee' | 'Admin') => {
+    try {
+      await adminApi.updateUserRole(id, newRole);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Failed to update user role:', err);
+      throw err;
+    }
   };
 
-  const updateTrainee = (_id: string, _updates: Partial<TraineeItem>) => {
-    // Trainee roster updates
+  // 3. Courses CRUD
+  const createCourse = async (data: Partial<CourseItem>) => {
+    try {
+      await adminApi.createCourse(data);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Failed to create course:', err);
+      throw err;
+    }
   };
 
-  const updateSettings = (updates: Partial<PortalSettings>) => {
-    setSettings((prev) => ({ ...prev, ...updates }));
+  const updateCourse = async (id: string, updates: Partial<CourseItem>) => {
+    try {
+      await adminApi.updateCourse(id, updates);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Failed to update course:', err);
+      throw err;
+    }
+  };
+
+  const deleteCourse = async (id: string) => {
+    try {
+      await adminApi.deleteCourse(id);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Failed to delete course:', err);
+      throw err;
+    }
+  };
+
+  const updateTrainer = async (id: string, updates: Partial<TrainerItem>) => {
+    try {
+      await adminApi.updateTrainer(id, updates);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Failed to update trainer:', err);
+      throw err;
+    }
+  };
+
+  const updateTrainee = async (id: string, updates: Partial<TraineeItem>) => {
+    try {
+      await adminApi.updateTrainee(id, updates);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Failed to update trainee:', err);
+      throw err;
+    }
+  };
+
+  const addDivision = async (division: Omit<DivisionItem, 'id'>) => {
+    try {
+      await adminApi.createDivision(division);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Failed to create division:', err);
+      throw err;
+    }
+  };
+
+  const createCompetency = async (data: Partial<CompetencyGaugeItem>) => {
+    try {
+      await adminApi.createCompetency(data);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Failed to create competency:', err);
+      throw err;
+    }
+  };
+
+  const updateCompetency = async (id: string, updates: Partial<CompetencyGaugeItem>) => {
+    try {
+      await adminApi.updateCompetency(id, updates);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Failed to update competency:', err);
+      throw err;
+    }
+  };
+
+  const deleteCompetency = async (id: string) => {
+    try {
+      await adminApi.deleteCompetency(id);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Failed to delete competency:', err);
+      throw err;
+    }
+  };
+
+  // 4. Portal Settings CRUD
+  const updateSettings = async (updates: Partial<PortalSettings>) => {
+    try {
+      const saved = await adminApi.updateSettings(updates);
+      setSettings(saved);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Failed to save settings:', err);
+      throw err;
+    }
   };
 
   return (
@@ -659,20 +413,28 @@ export const AdminDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         trainees,
         updateTrainee,
         courses,
+        createCourse,
         updateCourse,
+        deleteCourse,
 
         // Real Application Data for Graphs
-        monthlyEnrollments: unified.monthlyEnrollmentTrends,
-        divisions: unified.divisionParticipations,
-        addDivision: unified.addDivision,
-        competencyGauge: unified.competencyGaugeData,
-        subjectScores: unified.subjectScores,
+        monthlyEnrollments,
+        divisions,
+        addDivision,
+        competencyGauge,
+        createCompetency,
+        updateCompetency,
+        deleteCompetency,
+        subjectScores,
 
         settings,
         updateSettings,
 
         isChatbotOpen,
         setIsChatbotOpen,
+
+        refreshAllData,
+        isLoading,
       }}
     >
       {children}

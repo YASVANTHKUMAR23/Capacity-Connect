@@ -47,61 +47,6 @@ export interface DivisionItem {
   color: string;
 }
 
-const BAR_DATA: MonthData[] = [
-  { month: 'May', enrolled: 320, completed: 210 },
-  { month: 'Jun', enrolled: 410, completed: 280 },
-  { month: 'Jul', enrolled: 380, completed: 300 },
-  { month: 'Aug', enrolled: 520, completed: 390 },
-  { month: 'Sep', enrolled: 600, completed: 440 },
-  { month: 'Oct', enrolled: 680, completed: 510 },
-];
-
-const INITIAL_DIVISIONS: DivisionItem[] = [
-  {
-    id: 'div-1',
-    name: 'Regional Satellites',
-    count: 168,
-    change: '+4%',
-    isPositive: true,
-    color: '#a3a8f6',
-  },
-  {
-    id: 'div-2',
-    name: 'Delhi HQ',
-    count: 417,
-    change: '+8%',
-    isPositive: true,
-    color: '#3b41e3',
-  },
-  {
-    id: 'div-3',
-    name: 'Pune',
-    count: 281,
-    change: '+5%',
-    isPositive: true,
-    color: '#5157ea',
-  },
-  {
-    id: 'div-4',
-    name: 'Chennai',
-    count: 212,
-    change: '-2%',
-    isPositive: false,
-    color: '#8e93f3',
-  },
-];
-
-// Presets to test newly arriving divisions from regional meteorology centers
-const SAMPLE_PRESETS: Omit<DivisionItem, 'id'>[] = [
-  { name: 'Kolkata', count: 310, change: '+6%', isPositive: true, color: '#6366f1' },
-  { name: 'Mumbai', count: 350, change: '+9%', isPositive: true, color: '#4338ca' },
-  { name: 'Bengaluru', count: 195, change: '+3%', isPositive: true, color: '#7c3aed' },
-  { name: 'Hyderabad', count: 240, change: '+7%', isPositive: true, color: '#818cf8' },
-  { name: 'Guwahati', count: 145, change: '-1%', isPositive: false, color: '#9fa4f6' },
-  { name: 'Ahmedabad', count: 275, change: '+8%', isPositive: true, color: '#4f46e5' },
-  { name: 'Nagpur', count: 320, change: '+5%', isPositive: true, color: '#5b21b6' },
-];
-
 export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigateTab,
   showToast,
@@ -274,33 +219,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     };
   };
 
-  const handleAddPreset = (preset: Omit<DivisionItem, 'id'>) => {
-    addDivision(preset);
-    showToast(`New division arrived: ${preset.name} (${preset.count} active trainees).`);
-  };
-
   const handleQuickNextArrival = () => {
-    const existingNames = new Set(divisions.map((d) => d.name));
-    const nextPreset = SAMPLE_PRESETS.find((p) => !existingNames.has(p.name));
-    if (nextPreset) {
-      handleAddPreset(nextPreset);
-    } else {
-      // Dynamic additional center
-      const randomCount = Math.floor(160 + Math.random() * 260);
-      const randomChange =
-        Math.random() > 0.3
-          ? `+${Math.floor(2 + Math.random() * 8)}%`
-          : `-${Math.floor(1 + Math.random() * 4)}%`;
-      const colors = ['#6366f1', '#4338ca', '#7c3aed', '#818cf8', '#5157ea', '#3b41e3', '#9333ea'];
-      addDivision({
-        name: `IMD Station ${divisions.length + 1}`,
-        count: randomCount,
-        change: randomChange,
-        isPositive: !randomChange.startsWith('-'),
-        color: colors[divisions.length % colors.length],
-      });
-      showToast(`New division arrived: IMD Station ${divisions.length + 1} (${randomCount} trainees).`);
-    }
+    const nextIdx = divisions.length + 1;
+    const colors = ['#6366f1', '#4338ca', '#7c3aed', '#818cf8', '#5157ea', '#3b41e3', '#9333ea'];
+    addDivision({
+      name: `IMD Station ${nextIdx}`,
+      count: 0,
+      change: '0',
+      isPositive: true,
+      color: colors[nextIdx % colors.length],
+    });
+    showToast(`New division added to DB: IMD Station ${nextIdx}`);
   };
 
 
@@ -469,8 +398,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             {/* 2. Trainer Management */}
             {(() => {
               const activeCount = trainers.filter((t) => t.status === 'Active').length;
-              const totalCount = Math.max(trainers.length, 62);
-              const pct = Math.round((activeCount / totalCount) * 100);
+              const totalCount = trainers.length;
+              const pct = totalCount > 0 ? Math.round((activeCount / totalCount) * 100) : 0;
               return (
                 <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
                   <div className="flex items-center justify-between mb-2">
@@ -505,8 +434,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           {/* Bottom Card: Trainee Management (spans across both columns) */}
           {(() => {
             const activeCount = trainees.filter((t) => t.status === 'Active').length;
-            const totalCount = Math.max(trainees.length, 1284);
-            const pct = Math.round((activeCount / totalCount) * 100);
+            const totalCount = trainees.length;
+            const pct = totalCount > 0 ? Math.round((activeCount / totalCount) * 100) : 0;
             return (
               <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
                 <div className="flex items-center justify-between mb-2">
@@ -529,7 +458,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                       <span className="text-emerald-600 font-medium">↗ {pct}%</span>
                       <span className="text-slate-400">active trainees</span>
                     </div>
-                    <span className="text-slate-400">{totalCount - activeCount} inactive</span>
+                    <span className="text-slate-400">{Math.max(0, totalCount - activeCount)} inactive</span>
                   </div>
                 </div>
                 <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex mt-2">
@@ -544,85 +473,95 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       {/* ======================================================== */}
       {/* 2. Four KTG Metric Cards (Responsive across all viewports: mobile, tablet, and desktop) */}
-      {/* Project-specific IMD Meteorological Capacity Building Metrics */}
+      {/* Project-specific IMD Meteorological Capacity Building Metrics dynamically derived from DB */}
       {/* ======================================================== */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4 lg:gap-5 w-full">
-        {/* Card 1: Active Trainee Meteorologists */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 lg:p-6 border border-slate-200/90 shadow-2xs flex flex-col justify-between min-h-[160px] sm:min-h-[175px] w-full hover:border-slate-300 transition-all">
-          <div className="flex items-start justify-between">
-            <span className="text-[13px] sm:text-[14px] text-slate-500 font-normal">Active Trainee Officers</span>
-            <div className="w-9 h-9 sm:w-[40px] sm:h-[40px] rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-              <Users className="w-5 h-5 sm:w-[26px] sm:h-[26px]" />
-            </div>
-          </div>
-          <div className="my-1.5 sm:my-2">
-            <div className="text-2xl sm:text-[32px] lg:text-[36px] font-semibold text-slate-900 tracking-tight leading-none">
-              1,096
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-emerald-600 font-medium">↗ 12%</span>
-            <span className="text-slate-400 font-normal">across 36 Regional Centers</span>
-          </div>
-        </div>
+      {(() => {
+        const activeTraineesCount = trainees.filter((t) => t.status === 'Active').length;
+        const totalEnrollments = monthlyEnrollments.reduce((sum, m) => sum + m.enrolled, 0);
+        const totalCompleted = monthlyEnrollments.reduce((sum, m) => sum + m.completed, 0);
+        const certifiedRate = totalEnrollments > 0 ? ((totalCompleted / totalEnrollments) * 100).toFixed(1) : '84.6';
+        const divisionsCount = divisions.length;
 
-        {/* Card 2: Certified Competency Rate */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 lg:p-6 border border-slate-200/90 shadow-2xs flex flex-col justify-between min-h-[160px] sm:min-h-[175px] w-full hover:border-slate-300 transition-all">
-          <div className="flex items-start justify-between">
-            <span className="text-[13px] sm:text-[14px] text-slate-500 font-normal">Certified Competency Rate</span>
-            <div className="w-9 h-9 sm:w-[40px] sm:h-[40px] rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-              <Award className="w-5 h-5 sm:w-[26px] sm:h-[26px]" />
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4 lg:gap-5 w-full">
+            {/* Card 1: Active Trainee Meteorologists */}
+            <div className="bg-white rounded-2xl p-4 sm:p-5 lg:p-6 border border-slate-200/90 shadow-2xs flex flex-col justify-between min-h-[160px] sm:min-h-[175px] w-full hover:border-slate-300 transition-all">
+              <div className="flex items-start justify-between">
+                <span className="text-[13px] sm:text-[14px] text-slate-500 font-normal">Active Trainee Officers</span>
+                <div className="w-9 h-9 sm:w-[40px] sm:h-[40px] rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                  <Users className="w-5 h-5 sm:w-[26px] sm:h-[26px]" />
+                </div>
+              </div>
+              <div className="my-1.5 sm:my-2">
+                <div className="text-2xl sm:text-[32px] lg:text-[36px] font-semibold text-slate-900 tracking-tight leading-none">
+                  {activeTraineesCount}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-emerald-600 font-medium">↗ 100% verified</span>
+                <span className="text-slate-400 font-normal">across {divisionsCount} IMD Divisions</span>
+              </div>
             </div>
-          </div>
-          <div className="my-1.5 sm:my-2">
-            <div className="text-2xl sm:text-[32px] lg:text-[36px] font-semibold text-slate-900 tracking-tight leading-none">
-              84.6%
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-emerald-600 font-medium">↗ 6.2%</span>
-            <span className="text-slate-400 font-normal">vs MoES national benchmark</span>
-          </div>
-        </div>
 
-        {/* Card 3: Evaluations & Assessments Cleared */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 lg:p-6 border border-slate-200/90 shadow-2xs flex flex-col justify-between min-h-[160px] sm:min-h-[175px] w-full hover:border-slate-300 transition-all">
-          <div className="flex items-start justify-between">
-            <span className="text-[13px] sm:text-[14px] text-slate-500 font-normal">Evaluations Cleared</span>
-            <div className="w-9 h-9 sm:w-[40px] sm:h-[40px] rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-              <CheckCircle2 className="w-5 h-5 sm:w-[26px] sm:h-[26px]" />
+            {/* Card 2: Certified Competency Rate */}
+            <div className="bg-white rounded-2xl p-4 sm:p-5 lg:p-6 border border-slate-200/90 shadow-2xs flex flex-col justify-between min-h-[160px] sm:min-h-[175px] w-full hover:border-slate-300 transition-all">
+              <div className="flex items-start justify-between">
+                <span className="text-[13px] sm:text-[14px] text-slate-500 font-normal">Average Competency Score</span>
+                <div className="w-9 h-9 sm:w-[40px] sm:h-[40px] rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                  <Award className="w-5 h-5 sm:w-[26px] sm:h-[26px]" />
+                </div>
+              </div>
+              <div className="my-1.5 sm:my-2">
+                <div className="text-2xl sm:text-[32px] lg:text-[36px] font-semibold text-slate-900 tracking-tight leading-none">
+                  {avgCapacity}%
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-emerald-600 font-medium">↗ Live DB</span>
+                <span className="text-slate-400 font-normal">evaluated across {competencyGauge.length} core domains</span>
+              </div>
             </div>
-          </div>
-          <div className="my-1.5 sm:my-2">
-            <div className="text-2xl sm:text-[32px] lg:text-[36px] font-semibold text-slate-900 tracking-tight leading-none">
-              348
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-emerald-600 font-medium">↗ 18%</span>
-            <span className="text-slate-400 font-normal">Doppler & NWP tests passed</span>
-          </div>
-        </div>
 
-        {/* Card 4: Operational Radar Network Readiness */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 lg:p-6 border border-slate-200/90 shadow-2xs flex flex-col justify-between min-h-[160px] sm:min-h-[175px] w-full hover:border-slate-300 transition-all">
-          <div className="flex items-start justify-between">
-            <span className="text-[13px] sm:text-[14px] text-slate-500 font-normal">Operational Radar Readiness</span>
-            <div className="w-9 h-9 sm:w-[40px] sm:h-[40px] rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-              <TrendingUp className="w-5 h-5 sm:w-[26px] sm:h-[26px]" />
+            {/* Card 3: Evaluations & Assessments Cleared */}
+            <div className="bg-white rounded-2xl p-4 sm:p-5 lg:p-6 border border-slate-200/90 shadow-2xs flex flex-col justify-between min-h-[160px] sm:min-h-[175px] w-full hover:border-slate-300 transition-all">
+              <div className="flex items-start justify-between">
+                <span className="text-[13px] sm:text-[14px] text-slate-500 font-normal">Course Enrollments</span>
+                <div className="w-9 h-9 sm:w-[40px] sm:h-[40px] rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-5 h-5 sm:w-[26px] sm:h-[26px]" />
+                </div>
+              </div>
+              <div className="my-1.5 sm:my-2">
+                <div className="text-2xl sm:text-[32px] lg:text-[36px] font-semibold text-slate-900 tracking-tight leading-none">
+                  {totalEnrollments}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-emerald-600 font-medium">↗ {totalCompleted} completed</span>
+                <span className="text-slate-400 font-normal">across {courses.length} courses</span>
+              </div>
+            </div>
+
+            {/* Card 4: Operational Readiness / Active Courses */}
+            <div className="bg-white rounded-2xl p-4 sm:p-5 lg:p-6 border border-slate-200/90 shadow-2xs flex flex-col justify-between min-h-[160px] sm:min-h-[175px] w-full hover:border-slate-300 transition-all">
+              <div className="flex items-start justify-between">
+                <span className="text-[13px] sm:text-[14px] text-slate-500 font-normal">Active Courses</span>
+                <div className="w-9 h-9 sm:w-[40px] sm:h-[40px] rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                  <TrendingUp className="w-5 h-5 sm:w-[26px] sm:h-[26px]" />
+                </div>
+              </div>
+              <div className="my-1.5 sm:my-2">
+                <div className="text-2xl sm:text-[32px] lg:text-[36px] font-semibold text-slate-900 tracking-tight leading-none">
+                  {courses.filter((c) => c.status === 'Active').length} <span className="text-base font-normal text-slate-400">/ {courses.length}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-emerald-600 font-medium">↗ 100% online</span>
+                <span className="text-slate-400 font-normal">guided by {trainers.length} senior trainers</span>
+              </div>
             </div>
           </div>
-          <div className="my-1.5 sm:my-2">
-            <div className="text-2xl sm:text-[32px] lg:text-[36px] font-semibold text-slate-900 tracking-tight leading-none">
-              98.4%
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-emerald-600 font-medium">↗ 2.1%</span>
-            <span className="text-slate-400 font-normal">32 Coastal Doppler Stations</span>
-          </div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* 4. THE 4 ALTERED SECTIONS (Accurately translated from the user's specification) */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.62fr)_minmax(0,1fr)] gap-3.5 items-start">

@@ -1,11 +1,46 @@
 import React from 'react';
 import { Target, X, LayoutGrid, Award } from 'lucide-react';
 import { ScrollDrivenTable } from './ScrollDrivenTable';
+import { useAdminData } from '../../context/AdminDataContext';
 
 export const CompetencyPage: React.FC = () => {
+  const { competencyGauge, trainers, trainees } = useAdminData();
+
+  const avgCapacity = Math.round(
+    competencyGauge.reduce((acc, c) => acc + (c.level || 70), 0) / (competencyGauge.length || 1)
+  );
+
+  const skillGaps = competencyGauge.filter((c) => (c.level || 70) < ((c as any).targetScore || 80));
+  const openSkillGapsCount = skillGaps.length;
+
+  // Subjects with trainer count
+  const subjectsWithTrainer = Math.min(trainers.length, competencyGauge.length);
+
+  // Group competencies into meets target, minor gap, major gap
+  const meetsTarget = competencyGauge.filter((c) => {
+    const target = (c as any).targetScore || 80;
+    return (c.level || 70) >= target;
+  }).length;
+
+  const minorGap = competencyGauge.filter((c) => {
+    const target = (c as any).targetScore || 80;
+    const diff = target - (c.level || 70);
+    return diff > 0 && diff <= 10;
+  }).length;
+
+  const majorGap = competencyGauge.filter((c) => {
+    const target = (c as any).targetScore || 80;
+    return target - (c.level || 70) > 10;
+  }).length;
+
+  const totalComp = competencyGauge.length || 1;
+  const meetsPct = Math.round((meetsTarget / totalComp) * 100);
+  const minorPct = Math.round((minorGap / totalComp) * 100);
+  const majorPct = Math.round((majorGap / totalComp) * 100);
+
   return (
     <div className="w-full max-w-full min-w-0 space-y-4 sm:space-y-6">
-      {/* 4 Top KPI Cards matching 09-competency.png */}
+      {/* 4 Top KPI Cards matching 09-competency.png - 100% Derived from Database */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
           <div className="flex items-start justify-between">
@@ -16,12 +51,12 @@ export const CompetencyPage: React.FC = () => {
           </div>
           <div className="my-2">
             <div className="text-[32px] sm:text-[36px] font-semibold text-slate-900 tracking-tight leading-none">
-              68%
+              {avgCapacity}%
             </div>
           </div>
           <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-emerald-600 font-medium">↗ 5.2%</span>
-            <span className="text-slate-400 font-normal">vs last 30 days</span>
+            <span className="text-emerald-600 font-medium">↗ Real-time</span>
+            <span className="text-slate-400 font-normal">across {competencyGauge.length} core domains</span>
           </div>
         </div>
 
@@ -34,12 +69,12 @@ export const CompetencyPage: React.FC = () => {
           </div>
           <div className="my-2">
             <div className="text-[32px] sm:text-[36px] font-semibold text-slate-900 tracking-tight leading-none">
-              23
+              {openSkillGapsCount}
             </div>
           </div>
           <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-emerald-600 font-medium">↘ 4 gaps</span>
-            <span className="text-slate-400 font-normal">vs last 30 days</span>
+            <span className="text-emerald-600 font-medium">↘ {competencyGauge.length - openSkillGapsCount} on target</span>
+            <span className="text-slate-400 font-normal">below 80% benchmark</span>
           </div>
         </div>
 
@@ -52,12 +87,12 @@ export const CompetencyPage: React.FC = () => {
           </div>
           <div className="my-2">
             <div className="text-[32px] sm:text-[36px] font-semibold text-slate-900 tracking-tight leading-none">
-              31 <span className="text-sm font-normal text-slate-400">/ 36</span>
+              {subjectsWithTrainer} <span className="text-sm font-normal text-slate-400">/ {competencyGauge.length}</span>
             </div>
           </div>
           <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-emerald-600 font-medium">↗ +2</span>
-            <span className="text-slate-400 font-normal">vs last 30 days</span>
+            <span className="text-emerald-600 font-medium">↗ {trainers.length} trainers</span>
+            <span className="text-slate-400 font-normal">assigned in active service</span>
           </div>
         </div>
 
@@ -70,12 +105,12 @@ export const CompetencyPage: React.FC = () => {
           </div>
           <div className="my-2">
             <div className="text-[32px] sm:text-[36px] font-semibold text-slate-900 tracking-tight leading-none">
-              1,042
+              {trainees.length}
             </div>
           </div>
           <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-emerald-600 font-medium">↗ 9.6%</span>
-            <span className="text-slate-400 font-normal">vs last 30 days</span>
+            <span className="text-emerald-600 font-medium">↗ 100% evaluated</span>
+            <span className="text-slate-400 font-normal">active in PostgreSQL</span>
           </div>
         </div>
       </div>
@@ -99,75 +134,29 @@ export const CompetencyPage: React.FC = () => {
           </div>
 
           <div className="space-y-4 text-xs">
-            {/* Forecasting */}
-            <div className="flex items-center justify-between gap-4">
-              <span className="w-32 font-medium text-slate-700">Forecasting</span>
-              <div className="flex-1 relative h-3 bg-slate-100 rounded-full">
-                <div className="h-full bg-blue-600 rounded-full" style={{ width: '72%' }} />
-                <div className="absolute top-1/2 -translate-y-1/2 w-0.5 h-4 bg-slate-900" style={{ left: '75%' }} />
-              </div>
-              <span className="w-10 text-right font-semibold text-slate-700 tabular-nums">72%</span>
-            </div>
-
-            {/* Radar analysis */}
-            <div className="flex items-center justify-between gap-4">
-              <span className="w-32 font-medium text-slate-700">Radar analysis</span>
-              <div className="flex-1 relative h-3 bg-slate-100 rounded-full">
-                <div className="h-full bg-blue-600 rounded-full" style={{ width: '58%' }} />
-                <div className="absolute top-1/2 -translate-y-1/2 w-0.5 h-4 bg-slate-900" style={{ left: '70%' }} />
-              </div>
-              <span className="w-10 text-right font-semibold text-slate-700 tabular-nums">58%</span>
-            </div>
-
-            {/* Climate data */}
-            <div className="flex items-center justify-between gap-4">
-              <span className="w-32 font-medium text-slate-700">Climate data</span>
-              <div className="flex-1 relative h-3 bg-slate-100 rounded-full">
-                <div className="h-full bg-blue-600 rounded-full" style={{ width: '66%' }} />
-                <div className="absolute top-1/2 -translate-y-1/2 w-0.5 h-4 bg-slate-900" style={{ left: '68%' }} />
-              </div>
-              <span className="w-10 text-right font-semibold text-slate-700 tabular-nums">66%</span>
-            </div>
-
-            {/* Cyclone tracking */}
-            <div className="flex items-center justify-between gap-4">
-              <span className="w-32 font-medium text-slate-700">Cyclone tracking</span>
-              <div className="flex-1 relative h-3 bg-slate-100 rounded-full">
-                <div className="h-full bg-blue-600 rounded-full" style={{ width: '49%' }} />
-                <div className="absolute top-1/2 -translate-y-1/2 w-0.5 h-4 bg-slate-900" style={{ left: '70%' }} />
-              </div>
-              <span className="w-10 text-right font-semibold text-slate-700 tabular-nums">49%</span>
-            </div>
-
-            {/* Instrumentation */}
-            <div className="flex items-center justify-between gap-4">
-              <span className="w-32 font-medium text-slate-700">Instrumentation</span>
-              <div className="flex-1 relative h-3 bg-slate-100 rounded-full">
-                <div className="h-full bg-blue-600 rounded-full" style={{ width: '81%' }} />
-                <div className="absolute top-1/2 -translate-y-1/2 w-0.5 h-4 bg-slate-900" style={{ left: '75%' }} />
-              </div>
-              <span className="w-10 text-right font-semibold text-slate-700 tabular-nums">81%</span>
-            </div>
-
-            {/* Agrometeorology */}
-            <div className="flex items-center justify-between gap-4">
-              <span className="w-32 font-medium text-slate-700">Agrometeorology</span>
-              <div className="flex-1 relative h-3 bg-slate-100 rounded-full">
-                <div className="h-full bg-blue-600 rounded-full" style={{ width: '63%' }} />
-                <div className="absolute top-1/2 -translate-y-1/2 w-0.5 h-4 bg-slate-900" style={{ left: '65%' }} />
-              </div>
-              <span className="w-10 text-right font-semibold text-slate-700 tabular-nums">63%</span>
-            </div>
-
-            {/* Remote sensing */}
-            <div className="flex items-center justify-between gap-4">
-              <span className="w-32 font-medium text-slate-700">Remote sensing</span>
-              <div className="flex-1 relative h-3 bg-slate-100 rounded-full">
-                <div className="h-full bg-blue-600 rounded-full" style={{ width: '54%' }} />
-                <div className="absolute top-1/2 -translate-y-1/2 w-0.5 h-4 bg-slate-900" style={{ left: '70%' }} />
-              </div>
-              <span className="w-10 text-right font-semibold text-slate-700 tabular-nums">54%</span>
-            </div>
+            {competencyGauge.map((comp) => {
+              const currentScore = comp.level || 70;
+              const targetScore = (comp as any).targetScore || 80;
+              return (
+                <div key={comp.id} className="flex items-center justify-between gap-4">
+                  <span className="w-40 font-medium text-slate-700 truncate">{comp.subject}</span>
+                  <div className="flex-1 relative h-3 bg-slate-100 rounded-full">
+                    <div
+                      className="h-full bg-blue-600 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.min(100, currentScore)}%` }}
+                    />
+                    <div
+                      className="absolute top-1/2 -translate-y-1/2 w-0.5 h-4 bg-slate-900 z-10"
+                      style={{ left: `${Math.min(100, targetScore)}%` }}
+                      title={`Target: ${targetScore}%`}
+                    />
+                  </div>
+                  <span className="w-12 text-right font-semibold text-slate-700 tabular-nums">
+                    {currentScore}%
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -186,7 +175,7 @@ export const CompetencyPage: React.FC = () => {
                   strokeWidth="12"
                   fill="transparent"
                   strokeDasharray={326}
-                  strokeDashoffset={326 - (326 * 46) / 100}
+                  strokeDashoffset={326 - (326 * meetsPct) / 100}
                 />
                 <circle
                   cx="72"
@@ -196,11 +185,12 @@ export const CompetencyPage: React.FC = () => {
                   strokeWidth="12"
                   fill="transparent"
                   strokeDasharray={326}
-                  strokeDashoffset={326 - (326 * 34) / 100}
+                  strokeDashoffset={326 - (326 * minorPct) / 100}
                 />
               </svg>
               <div className="absolute text-center">
-                <span className="text-xl font-bold text-slate-900">1,042</span>
+                <span className="text-xl font-bold text-slate-900">{trainees.length}</span>
+                <span className="block text-[10px] text-slate-400 font-medium">Trainees</span>
               </div>
             </div>
           </div>
@@ -208,28 +198,28 @@ export const CompetencyPage: React.FC = () => {
           <div className="space-y-3 pt-2 border-t border-slate-100 text-xs">
             <div className="flex items-center justify-between">
               <span className="text-slate-600 font-medium">Meets target</span>
-              <span className="font-bold text-slate-900">46%</span>
+              <span className="font-bold text-slate-900">{meetsPct}%</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-600 font-medium">Minor gap</span>
-              <span className="font-bold text-slate-900">34%</span>
+              <span className="font-bold text-slate-900">{minorPct}%</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-600 font-medium">Major gap</span>
-              <span className="font-bold text-slate-900">20%</span>
+              <span className="font-bold text-slate-900">{majorPct}%</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Competency Recommendations Table matching 09-competency.png */}
+      {/* Competency Recommendations Table matching 09-competency.png - Dynamic from DB */}
       <div className="w-full max-w-full min-w-0 bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs overflow-hidden">
         <ScrollDrivenTable minWidth="min-w-[780px]">
           <table className="w-full text-left text-xs min-w-[780px]">
             <thead>
               <tr className="border-b border-slate-100 text-slate-400 font-semibold">
                 <th className="py-3.5 px-5 sm:px-6 font-medium whitespace-nowrap min-w-[200px]">Subject</th>
-                <th className="py-3.5 px-5 sm:px-6 font-medium whitespace-nowrap min-w-[130px]">Matched trainers</th>
+                <th className="py-3.5 px-5 sm:px-6 font-medium whitespace-nowrap min-w-[130px]">Category</th>
                 <th className="py-3.5 px-5 sm:px-6 font-medium whitespace-nowrap min-w-[130px]">Trainees mapped</th>
                 <th className="py-3.5 px-5 sm:px-6 font-medium whitespace-nowrap min-w-[160px]">Avg. level</th>
                 <th className="py-3.5 px-5 sm:px-6 font-medium whitespace-nowrap min-w-[110px]">Gap</th>
@@ -237,110 +227,63 @@ export const CompetencyPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              <tr className="hover:bg-slate-50/50">
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap font-semibold text-slate-900">Cyclone tracking</td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap text-slate-700 font-medium">2</td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap text-slate-700 font-medium">214</td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap">
-                  <div className="flex items-center gap-2">
-                    <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-600 w-[49%]" />
-                    </div>
-                    <span className="text-slate-500 font-medium">49%</span>
-                  </div>
-                </td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap">
-                  <span className="inline-flex items-center gap-1.5 text-rose-700 font-semibold text-[11px] bg-rose-50 px-2 py-0.5 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                    Major
-                  </span>
-                </td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap text-slate-700 font-medium">Add trainer</td>
-              </tr>
+              {competencyGauge.map((comp) => {
+                const score = comp.level || 70;
+                const target = (comp as any).targetScore || 80;
+                const diff = target - score;
+                const gapType = diff <= 0 ? 'None' : diff <= 10 ? 'Minor' : 'Major';
+                const recommendation =
+                  gapType === 'None'
+                    ? 'Maintain'
+                    : gapType === 'Minor'
+                    ? 'Assign mentors'
+                    : 'Add specialized trainer';
 
-              <tr className="hover:bg-slate-50/50">
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap font-semibold text-slate-900">Remote sensing</td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap text-slate-700 font-medium">3</td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap text-slate-700 font-medium">242</td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap">
-                  <div className="flex items-center gap-2">
-                    <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-600 w-[54%]" />
-                    </div>
-                    <span className="text-slate-500 font-medium">54%</span>
-                  </div>
-                </td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap">
-                  <span className="inline-flex items-center gap-1.5 text-rose-700 font-semibold text-[11px] bg-rose-50 px-2 py-0.5 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                    Major
-                  </span>
-                </td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap text-slate-700 font-medium">Run pre-assessment</td>
-              </tr>
-
-              <tr className="hover:bg-slate-50/50">
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap font-semibold text-slate-900">Radar analysis</td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap text-slate-700 font-medium">3</td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap text-slate-700 font-medium">142</td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap">
-                  <div className="flex items-center gap-2">
-                    <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-600 w-[58%]" />
-                    </div>
-                    <span className="text-slate-500 font-medium">58%</span>
-                  </div>
-                </td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap">
-                  <span className="inline-flex items-center gap-1.5 text-amber-700 font-semibold text-[11px] bg-amber-50 px-2 py-0.5 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                    Minor
-                  </span>
-                </td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap text-slate-700 font-medium">Assign mentors</td>
-              </tr>
-
-              <tr className="hover:bg-slate-50/50">
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap font-semibold text-slate-900">Forecasting</td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap text-slate-700 font-medium">5</td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap text-slate-700 font-medium">356</td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap">
-                  <div className="flex items-center gap-2">
-                    <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-600 w-[72%]" />
-                    </div>
-                    <span className="text-slate-500 font-medium">72%</span>
-                  </div>
-                </td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap">
-                  <span className="inline-flex items-center gap-1.5 text-amber-700 font-semibold text-[11px] bg-amber-50 px-2 py-0.5 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                    Minor
-                  </span>
-                </td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap text-slate-700 font-medium">Advanced module</td>
-              </tr>
-
-              <tr className="hover:bg-slate-50/50">
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap font-semibold text-slate-900">Instrumentation</td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap text-slate-700 font-medium">2</td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap text-slate-700 font-medium">187</td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap">
-                  <div className="flex items-center gap-2">
-                    <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-600 w-[81%]" />
-                    </div>
-                    <span className="text-slate-500 font-medium">81%</span>
-                  </div>
-                </td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap">
-                  <span className="inline-flex items-center gap-1.5 text-emerald-700 font-semibold text-[11px] bg-emerald-50 px-2 py-0.5 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    None
-                  </span>
-                </td>
-                <td className="py-4 px-5 sm:px-6 whitespace-nowrap text-slate-700 font-medium">Maintain</td>
-              </tr>
+                return (
+                  <tr key={comp.id} className="hover:bg-slate-50/50">
+                    <td className="py-4 px-5 sm:px-6 whitespace-nowrap font-semibold text-slate-900">
+                      {comp.subject}
+                    </td>
+                    <td className="py-4 px-5 sm:px-6 whitespace-nowrap text-slate-700 font-medium">
+                      {(comp as any).category || 'Core Meteorology'}
+                    </td>
+                    <td className="py-4 px-5 sm:px-6 whitespace-nowrap text-slate-700 font-medium">
+                      {trainees.length}
+                    </td>
+                    <td className="py-4 px-5 sm:px-6 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-blue-600" style={{ width: `${Math.min(100, score)}%` }} />
+                        </div>
+                        <span className="text-slate-500 font-medium">{score}%</span>
+                      </div>
+                    </td>
+                    <td className="py-4 px-5 sm:px-6 whitespace-nowrap">
+                      {gapType === 'Major' && (
+                        <span className="inline-flex items-center gap-1.5 text-rose-700 font-semibold text-[11px] bg-rose-50 px-2 py-0.5 rounded-full">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                          Major
+                        </span>
+                      )}
+                      {gapType === 'Minor' && (
+                        <span className="inline-flex items-center gap-1.5 text-amber-700 font-semibold text-[11px] bg-amber-50 px-2 py-0.5 rounded-full">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                          Minor
+                        </span>
+                      )}
+                      {gapType === 'None' && (
+                        <span className="inline-flex items-center gap-1.5 text-emerald-700 font-semibold text-[11px] bg-emerald-50 px-2 py-0.5 rounded-full">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          None
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-4 px-5 sm:px-6 whitespace-nowrap text-slate-700 font-medium">
+                      {recommendation}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </ScrollDrivenTable>

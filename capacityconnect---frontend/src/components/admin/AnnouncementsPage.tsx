@@ -134,7 +134,7 @@ export const AnnouncementsPage: React.FC<AnnouncementsPageProps> = ({ showToast 
                 : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
             }`}
           >
-            All <span className="opacity-80 ml-0.5">18</span>
+            All <span className="opacity-80 ml-0.5">{announcements.length}</span>
           </button>
           <button
             type="button"

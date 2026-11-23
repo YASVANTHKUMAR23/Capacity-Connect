@@ -1,6 +1,8 @@
 import React, { useState, useId } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { Screen } from '../../types';
+import { authApi } from '../../services/authApi';
+import { PasswordCriteria } from '../common/PasswordCriteria';
 
 interface ResetPasswordScreenProps {
   onNavigate: (screen: Screen) => void;
@@ -11,8 +13,8 @@ export const ResetPasswordScreen: React.FC<ResetPasswordScreenProps> = ({
   onNavigate,
   showToast,
 }) => {
-  // Pre-seed with sample matching screenshot state
-  const [newPassword, setNewPassword] = useState('Password123');
+  // Pre-seed with clean state
+  const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -21,28 +23,21 @@ export const ResetPasswordScreen: React.FC<ResetPasswordScreenProps> = ({
   const newPasswordId = useId();
   const confirmPasswordId = useId();
 
-  // Requirements checks
-  const hasMinLength = newPassword.length >= 8;
-  const hasNumber = /\d/.test(newPassword);
-  const hasSymbol = /[!@#$%^&*(),.?":{}|<>]/.test(newPassword);
+  // Check token presence on mount
+  React.useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    if (!token) {
+      setError('No reset token found in URL. Please use the link provided in your email.');
+    }
+  }, []);
 
-  // Compute strength bars (0 to 4)
-  const strengthScore = [
-    hasMinLength,
-    hasNumber,
-    hasSymbol,
-    newPassword.length >= 10 && /[A-Z]/.test(newPassword),
-  ].filter(Boolean).length;
-
-  // In the screenshot, 3 bars are dark blue and 1 is gray
-  const activeBars = Math.max(strengthScore, newPassword ? (hasMinLength && hasNumber && !hasSymbol ? 3 : strengthScore) : 0);
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!hasMinLength || !hasNumber) {
-      setError('Please fulfill the password criteria requirements');
+    if (newPassword.length < 12) {
+      setError('Password must be at least 12 characters long according to security policy');
       return;
     }
 
@@ -58,11 +53,27 @@ export const ResetPasswordScreen: React.FC<ResetPasswordScreenProps> = ({
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      setIsLoading(false);
-      showToast('Password updated successfully. You can now sign in.');
+    try {
+      // Extract token from URL query params
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get('token');
+
+      if (!token) {
+        setError('Missing or invalid password reset token. Please request a new link.');
+        return;
+      }
+
+      await authApi.resetPassword(token, newPassword);
+      showToast('Password updated successfully. Please sign in with your new password.');
+      
+      // Clean query parameters from URL bar
+      window.history.replaceState({}, '', '/');
       onNavigate('login');
-    }, 450);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to update password. Your reset link may have expired.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -115,62 +126,7 @@ export const ResetPasswordScreen: React.FC<ResetPasswordScreenProps> = ({
             </button>
           </div>
 
-          {/* Segmented Strength Bar (4 segments) */}
-          <div className="grid grid-cols-4 gap-1.5 mt-2.5">
-            {[1, 2, 3, 4].map((segIndex) => {
-              const isFilled = segIndex <= (activeBars || 3);
-              return (
-                <div
-                  key={segIndex}
-                  className={`h-1 rounded-full transition-colors ${
-                    isFilled ? 'bg-[#1e3a8a]' : 'bg-slate-200'
-                  }`}
-                />
-              );
-            })}
-          </div>
-
-          {/* Criteria Checklist */}
-          <div className="mt-3.5 space-y-2 text-xs text-slate-600">
-            <div className="flex items-center gap-2.5">
-              <span
-                className={`w-2.5 h-2.5 rounded-full flex items-center justify-center shrink-0 ${
-                  hasMinLength
-                    ? 'bg-[#1e3a8a]'
-                    : 'border border-slate-300 bg-transparent'
-                }`}
-              />
-              <span className={hasMinLength ? 'text-slate-700 font-medium' : 'text-slate-500'}>
-                At least 8 characters
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2.5">
-              <span
-                className={`w-2.5 h-2.5 rounded-full flex items-center justify-center shrink-0 ${
-                  hasNumber
-                    ? 'bg-[#1e3a8a]'
-                    : 'border border-slate-300 bg-transparent'
-                }`}
-              />
-              <span className={hasNumber ? 'text-slate-700 font-medium' : 'text-slate-500'}>
-                One number
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2.5">
-              <span
-                className={`w-2.5 h-2.5 rounded-full flex items-center justify-center shrink-0 ${
-                  hasSymbol
-                    ? 'bg-[#1e3a8a]'
-                    : 'border border-slate-300 bg-transparent'
-                }`}
-              />
-              <span className={hasSymbol ? 'text-slate-700 font-medium' : 'text-slate-500'}>
-                One symbol
-              </span>
-            </div>
-          </div>
+          <PasswordCriteria password={newPassword} />
         </div>
 
         {/* Confirm password */}

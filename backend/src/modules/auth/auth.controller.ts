@@ -8,6 +8,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
@@ -25,6 +26,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ConfigService } from '@nestjs/config';
+import { ERROR_CODES } from '../../common/constants/error-codes';
 
 @Controller('auth')
 export class AuthController {
@@ -99,23 +101,36 @@ export class AuthController {
     const userAgent = req.headers['user-agent'];
     const token = req.cookies?.refreshToken || body?.refreshToken;
 
-    const rotated = await this.sessionService.rotateSession(token, userAgent, ip);
-    const user = await this.authService.getMe(rotated.userId);
+    if (!token) {
+      throw new UnauthorizedException({
+        code: ERROR_CODES.TOKEN_INVALID,
+        message: 'No refresh token provided',
+      });
+    }
 
-    const newAccessToken = this.authService['tokenService'].generateAccessToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-      sid: rotated.sessionId,
-    });
+    try {
+      const rotated = await this.sessionService.rotateSession(token, userAgent, ip);
+      const user = await this.authService.getMe(rotated.userId);
 
-    this.setRefreshCookie(res, rotated.newRefreshToken);
+      const newAccessToken = this.authService['tokenService'].generateAccessToken({
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+        sid: rotated.sessionId,
+      });
 
-    return {
-      success: true,
-      accessToken: newAccessToken,
-      user,
-    };
+      this.setRefreshCookie(res, rotated.newRefreshToken);
+
+      return {
+        success: true,
+        accessToken: newAccessToken,
+        user,
+      };
+    } catch (err) {
+      // Invalidate the dead/reused refresh cookie immediately so the client stops resending it
+      this.clearRefreshCookie(res);
+      throw err;
+    }
   }
 
   @Post('logout')

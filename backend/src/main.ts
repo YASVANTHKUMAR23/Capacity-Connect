@@ -47,7 +47,11 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);
 
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
+  console.log(`\n======================================================`);
+  console.log(`🚀 Capacity Connect Backend running on: http://localhost:${port}/api/v1`);
+  console.log(`📑 API Documentation (Swagger) on:      http://localhost:${port}/api/docs`);
+  console.log(`======================================================\n`);
   logger.log(`Capacity Connect Backend running on http://localhost:${port}/api/v1`);
   logger.log(`API Documentation available on http://localhost:${port}/api/docs`);
 }

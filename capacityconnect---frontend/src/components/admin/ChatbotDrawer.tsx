@@ -10,6 +10,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { AdminTab } from '../../types';
+import { useAdminData } from '../../context/AdminDataContext';
 
 interface ChatbotDrawerProps {
   isOpen: boolean;
@@ -31,6 +32,7 @@ export const ChatbotDrawer: React.FC<ChatbotDrawerProps> = ({
 }) => {
   if (!isOpen) return null;
 
+  const { courses, trainees, pendingApprovals } = useAdminData();
   const [inputVal, setInputVal] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -78,25 +80,26 @@ export const ChatbotDrawer: React.FC<ChatbotDrawerProps> = ({
         botResponse = {
           id: `b-${Date.now()}`,
           sender: 'bot',
-          text: 'There are currently 4 pending accounts waiting for review: Kiran Joshi (Bengaluru), Sana Ahmed (Hyderabad), Vikram Patel (Ahmedabad), and Rhea Menon (Kochi). Would you like to review them in Role Management?',
+          text: `There are currently ${pendingApprovals.length} pending accounts waiting for review in PostgreSQL. Would you like to review them in Role Management?`,
         };
       } else if (lower.includes('competency') || lower.includes('gap')) {
         botResponse = {
           id: `b-${Date.now()}`,
           sender: 'bot',
-          text: 'The largest skill gaps are in Cyclone tracking (49% capacity, 2 matched trainers for 214 trainees) and Remote sensing (54% capacity).',
+          text: 'The competency scores are synchronized live from PostgreSQL user competency matrix.',
         };
       } else if (lower.includes('trainer') || lower.includes('top')) {
         botResponse = {
           id: `b-${Date.now()}`,
           sender: 'bot',
-          text: 'Top active trainers by enrollment: Dr. Anita Rao (356 trainees, 6 courses) and Prof. Sunil Das (298 trainees, 3 courses).',
+          text: 'Trainers are linked directly to PostgreSQL course assignments.',
         };
       } else {
+        const activeCourses = courses.filter((c) => c.status === 'Active').length;
         botResponse = {
           id: `b-${Date.now()}`,
           sender: 'bot',
-          text: `Analyzing live IMD database for "${query}"... Average course completion is at 68% across all 36 active modules, with 1,096 active trainees.`,
+          text: `Analyzing live IMD database for "${query}"... Found ${activeCourses} active courses across database records with ${trainees.length} verified trainees.`,
         };
       }
 

@@ -1,34 +1,40 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Eye, EyeOff, Shield, CloudSun } from 'lucide-react';
 import { Screen, UserAccount } from '../../types';
-import { useUnifiedData } from '../../context/UnifiedDataContext';
+import { authApi } from '../../services/authApi';
+import { TurnstileWidget } from '../common/TurnstileWidget';
 
 interface SignInScreenProps {
   onNavigate: (screen: Screen) => void;
   currentUser: UserAccount | null;
   setCurrentUser: (user: UserAccount | null) => void;
   showToast: (msg: string) => void;
+  setVerificationEmail?: (email: string) => void;
 }
 
 export const SignInScreen: React.FC<SignInScreenProps> = ({
   onNavigate,
-  currentUser,
   setCurrentUser,
   showToast,
+  setVerificationEmail,
 }) => {
-  const unified = useUnifiedData();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [keepSignedIn, setKeepSignedIn] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState('1x00000000000000000000AA');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleTurnstileVerify = useCallback((token: string) => {
+    setCaptchaToken(token);
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!email) {
+    if (!email.trim()) {
       setError('Please enter your email address');
       return;
     }
@@ -39,183 +45,104 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      // 100% Real Backend Authentication
+      const response = await authApi.login({
+        email: email.trim(),
+        password,
+        captchaToken,
+      });
 
-      // Check registered profile in UnifiedDataContext
-      const cleanEmail = email.trim();
-      const registeredUser = unified.getUserByEmail(cleanEmail);
+      const user = response.user;
+      const role = user?.role?.toLowerCase() || 'trainee';
 
-      if (registeredUser) {
-        if (registeredUser.status === 'pending') {
-          setCurrentUser(registeredUser);
-          showToast('Account is pending administrator approval.');
-          onNavigate('pending-approval');
-          return;
-        }
+      const account: UserAccount = {
+        firstName: user?.fullName?.split(' ')[0] || 'User',
+        lastName: user?.fullName?.split(' ').slice(1).join(' ') || '',
+        email: user?.email || email.trim(),
+        organization: user?.organization || 'India Meteorological Department',
+        role: role as any,
+        status: user?.accountStatus?.toLowerCase() === 'active' ? 'approved' : 'pending',
+        submittedDate: 'Active',
+      };
 
-        if (registeredUser.status === 'rejected') {
-          setError('This account registration request was declined by the administrator.');
-          return;
-        }
+      setCurrentUser(account);
 
-        // Approved user
-        setCurrentUser(registeredUser);
-        if (registeredUser.role === 'admin') {
-          showToast('Welcome, Administrator. Logged into Admin Portal.');
-          onNavigate('admin-portal');
-          return;
-        }
-        if (registeredUser.role === 'trainer') {
-          showToast(`Welcome, ${registeredUser.firstName} ${registeredUser.lastName}. Logged into Trainer Portal.`);
-          onNavigate('trainer-portal');
-          return;
-        }
-        if (registeredUser.profileComplete === false) {
-          showToast('Account approved! Please complete your initial profile setup.');
-          onNavigate('trainee-setup');
-          return;
-        }
-        showToast(`Welcome back, ${registeredUser.firstName} ${registeredUser.lastName}. Logged into Trainee Portal.`);
-        onNavigate('trainee-portal');
-        return;
-      }
-
-      // Check if Trainer sign in (Dr. Ravi Menon)
-      if (
-        email.toLowerCase().includes('ravi') ||
-        email.toLowerCase().includes('menon') ||
-        email.toLowerCase().includes('trainer')
-      ) {
-        const trainerUser: UserAccount = {
-          firstName: 'Dr. Ravi',
-          lastName: 'Menon',
-          email: email || 'ravi.menon@imd.gov.in',
-          organization: 'Cyclone Warning Division, IMD Headquarters, New Delhi',
-          role: 'trainer',
-          status: 'approved',
-          submittedDate: '19 Oct 2026',
-        };
-        setCurrentUser(trainerUser);
-        showToast('Welcome, Dr. Ravi Menon. Logged into Trainer Portal.');
-        onNavigate('trainer-portal');
-        return;
-      }
-
-      // Check if Admin sign in
-      if (email.toLowerCase().includes('admin')) {
-        const adminUser: UserAccount = {
-          firstName: 'Admin',
-          lastName: 'Headquarters',
-          email: email || 'admin@imd.gov.in',
-          organization: 'IMD Headquarters',
-          role: 'admin',
-          status: 'approved',
-          submittedDate: '19 Oct 2026',
-        };
-        setCurrentUser(adminUser);
+      // 1. Admin Direct Login
+      if (role === 'admin') {
         showToast('Welcome, Administrator. Logged into Admin Portal.');
         onNavigate('admin-portal');
         return;
       }
 
-      // Check if Trainee Setup (profileComplete=false)
-      if (
-        email.toLowerCase().includes('setup') ||
-        email.toLowerCase().includes('rohit')
-      ) {
-        const newTrainee: UserAccount = {
-          firstName: 'Rohit',
-          lastName: 'Sharma',
-          email: email || 'rohit.sharma@imd.gov.in',
-          organization: 'Regional Meteorological Centre, Mumbai',
-          role: 'trainee',
-          status: 'approved',
-          profileComplete: false,
-          submittedDate: '24 Oct 2026',
-        };
-        setCurrentUser(newTrainee);
-        showToast('Account approved. Complete profile to unlock portal.');
-        onNavigate('trainee-setup');
+      // 2. Trainer Login
+      if (role === 'trainer') {
+        showToast(`Welcome, ${account.firstName}. Logged into Trainer Portal.`);
+        onNavigate('trainer-portal');
         return;
       }
 
-      // Check if pending approval trainee
-      if (email.toLowerCase().includes('pending') || email.toLowerCase().includes('kavita')) {
-        if (!currentUser) {
-          setCurrentUser({
-            firstName: 'Kavita',
-            lastName: 'Patel',
-            email: email || 'kavita.patel@imd.gov.in',
-            organization: 'Regional Meteorological Centre',
-            role: 'trainee',
-            status: 'pending',
-            submittedDate: '25 Oct 2026',
-          });
+      // 3. Trainee Login: check if first-time onboarding completed
+      const hasOnboarded = localStorage.getItem(`cc_onboarding_completed_${account.email}`) === 'true';
+      if (hasOnboarded) {
+        showToast(`Welcome back, ${account.firstName}. Logged into Trainee Portal.`);
+        onNavigate('trainee-portal');
+      } else {
+        showToast(`Welcome, ${account.firstName}! Let's set up your profile details.`);
+        onNavigate('trainee-setup');
+      }
+    } catch (err: any) {
+      // Handle strict backend error codes
+      if (err?.code === 'EMAIL_NOT_VERIFIED') {
+        if (setVerificationEmail) {
+          setVerificationEmail(email.trim());
         }
-        showToast('Your account is currently awaiting administrative approval.');
+        showToast('Your email is not verified. Please enter the 6-digit OTP code.');
+        onNavigate('verify-otp');
+        return;
+      }
+
+      if (err?.code === 'ACCOUNT_PENDING_APPROVAL') {
+        setCurrentUser({
+          firstName: 'Officer',
+          lastName: 'IMD',
+          email: email.trim(),
+          organization: 'India Meteorological Department',
+          role: 'trainee',
+          status: 'pending',
+          submittedDate: 'Pending Review',
+        });
+        showToast('Your account is awaiting administrator approval.');
         onNavigate('pending-approval');
         return;
       }
 
-      // Check if Trainee (Asha Verma - profileComplete=true)
-      if (
-        email.toLowerCase().includes('asha') ||
-        email.toLowerCase().includes('verma') ||
-        email.toLowerCase().includes('trainee')
-      ) {
-        const traineeUser: UserAccount = {
-          firstName: 'Asha',
-          lastName: 'Verma',
-          email: email || 'asha.verma@imd.gov.in',
-          organization: 'Regional Meteorological Centre, New Delhi',
-          role: 'trainee',
-          status: 'approved',
-          profileComplete: true,
-          submittedDate: '19 Oct 2026',
-        };
-        setCurrentUser(traineeUser);
-        showToast('Welcome back, Asha Verma. Logged into Trainee Portal.');
-        onNavigate('trainee-portal');
+      if (err?.code === 'ACCOUNT_REJECTED') {
+        setError('This account registration request was declined by the administrator.');
         return;
       }
 
-      // Default approved user
-      const approvedUser: UserAccount = {
-        firstName: 'Asha',
-        lastName: 'Verma',
-        email: email,
-        organization: 'India Meteorological Department',
-        role: 'trainee',
-        status: 'approved',
-        profileComplete: true,
-        submittedDate: '19 Oct 2026',
-      };
+      if (err?.code === 'ACCOUNT_SUSPENDED') {
+        setError('Your account has been suspended by an administrator.');
+        return;
+      }
 
-      setCurrentUser(approvedUser);
-      showToast('Signed in successfully.');
-      onNavigate('trainee-portal');
-    }, 350);
+      if (err?.code === 'INVALID_CREDENTIALS') {
+        setError('Invalid email or password. Please verify your credentials.');
+        return;
+      }
+
+      setError(err?.message || 'Authentication failed. Please check your credentials.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleAdminQuickFill = () => {
-    setEmail('admin@imd.gov.in');
-    setPassword('AdminSecure@2026');
-  };
-
-  const handleTrainerQuickFill = () => {
-    setEmail('ravi.menon@imd.gov.in');
-    setPassword('Trainer@2026');
-  };
-
-  const handleTraineeQuickFill = () => {
-    setEmail('asha.verma@imd.gov.in');
-    setPassword('Trainee@2026');
-  };
-
-  const handleTraineeSetupQuickFill = () => {
-    setEmail('rohit.sharma@imd.gov.in');
-    setPassword('Trainee@2026');
+  // Helper buttons to prefill verified backend credentials
+  const fillCredentials = (userEmail: string, userPass: string) => {
+    setEmail(userEmail);
+    setPassword(userPass);
+    setError(null);
   };
 
   return (
@@ -225,11 +152,12 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
         <h1 className="text-[32px] font-bold text-slate-900 tracking-tight leading-tight">
           Sign in
         </h1>
-        <p className="text-[15px] text-slate-500 mt-2 font-normal">
-          Welcome back. Enter your details to continue learning.
+        <p className="text-[15px] text-slate-500 mt-2 font-normal leading-relaxed">
+          Access the IMD Capacity Building & Training Portal with your credentials.
         </p>
       </div>
 
+      {/* Error alert */}
       {error && (
         <div className="mb-5 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
           {error}
@@ -243,14 +171,14 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
             htmlFor="email" 
             className="block text-sm font-medium text-slate-800 mb-1.5"
           >
-            Email
+            Official Email
           </label>
           <input
             id="email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="name@organization.gov.in"
+            placeholder="name@imd.gov.in"
             className="w-full px-3.5 py-2.5 bg-white border border-blue-600/80 rounded-lg text-slate-900 text-sm placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 transition-all shadow-xs"
             autoComplete="email"
           />
@@ -309,6 +237,9 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
           </button>
         </div>
 
+        {/* Cloudflare Turnstile Captcha Widget */}
+        <TurnstileWidget onVerify={handleTurnstileVerify} />
+
         {/* Submit button */}
         <button
           type="submit"
@@ -335,39 +266,31 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
         </button>
       </div>
 
-      {/* Role Quick Fill Buttons (Trainee, Setup, Trainer, Admin) */}
+      {/* Verified Backend Role Pre-fill Helpers */}
       <div className="mt-8 pt-5 border-t border-slate-200/80 flex flex-col items-center gap-2">
         <button
           type="button"
-          onClick={handleTraineeQuickFill}
-          className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-indigo-200 bg-indigo-50/90 hover:bg-indigo-100 text-indigo-900 font-semibold text-xs transition-colors cursor-pointer shadow-2xs"
-        >
-          <span className="w-2 h-2 rounded-full bg-indigo-600" />
-          <span>Quick fill: Trainee Portal (Asha Verma · asha.verma@imd.gov.in)</span>
-        </button>
-        <button
-          type="button"
-          onClick={handleTraineeSetupQuickFill}
-          className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-purple-200 bg-purple-50/80 hover:bg-purple-100 text-purple-900 font-medium text-xs transition-colors cursor-pointer"
-        >
-          <span className="w-2 h-2 rounded-full bg-purple-600" />
-          <span>Quick fill: Trainee Setup 4-Step (Rohit Sharma · rohit.sharma@imd.gov.in)</span>
-        </button>
-        <button
-          type="button"
-          onClick={handleTrainerQuickFill}
-          className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-blue-200 bg-blue-50/80 hover:bg-blue-100/90 text-blue-900 font-semibold text-xs transition-colors cursor-pointer shadow-2xs"
-        >
-          <CloudSun className="w-3.5 h-3.5 text-blue-600" />
-          <span>Quick fill: Trainer Portal (Dr. Ravi Menon · ravi.menon@imd.gov.in)</span>
-        </button>
-        <button
-          type="button"
-          onClick={handleAdminQuickFill}
+          onClick={() => fillCredentials('admin@imd.gov.in', 'Admin@Capacity2026!')}
           className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium text-xs transition-colors cursor-pointer"
         >
           <Shield className="w-3.5 h-3.5 text-slate-600" />
-          <span>Quick fill: Admin Portal (admin@imd.gov.in)</span>
+          <span>Fill Admin: admin@imd.gov.in</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => fillCredentials('ravi.menon@imd.gov.in', 'Trainer@Capacity2026!')}
+          className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-blue-200 bg-blue-50/80 hover:bg-blue-100/90 text-blue-900 font-semibold text-xs transition-colors cursor-pointer shadow-2xs"
+        >
+          <CloudSun className="w-3.5 h-3.5 text-blue-600" />
+          <span>Fill Trainer: ravi.menon@imd.gov.in</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => fillCredentials('asha.verma@imd.gov.in', 'Trainee@Capacity2026!')}
+          className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-indigo-200 bg-indigo-50/90 hover:bg-indigo-100 text-indigo-900 font-semibold text-xs transition-colors cursor-pointer shadow-2xs"
+        >
+          <span className="w-2 h-2 rounded-full bg-indigo-600" />
+          <span>Fill Trainee: asha.verma@imd.gov.in</span>
         </button>
       </div>
     </div>

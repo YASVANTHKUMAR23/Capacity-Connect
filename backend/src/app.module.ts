@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD, APP_FILTER } from '@nestjs/core';
@@ -11,7 +11,9 @@ import { RolesModule } from './modules/roles/roles.module';
 import { EmailModule } from './modules/email/email.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { HttpLoggerMiddleware } from './common/middleware/http-logger.middleware';
 
 @Module({
   imports: [
@@ -22,7 +24,7 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
     ThrottlerModule.forRoot([
       {
         ttl: 60000,
-        limit: 30, // 30 requests per minute for auth endpoints
+        limit: 300, // 300 requests per minute to prevent dashboard refresh throttling
       },
     ]),
     DatabaseModule,
@@ -32,6 +34,7 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
     EmailModule,
     SessionsModule,
     AuditModule,
+    AdminModule,
   ],
   providers: [
     {
@@ -44,4 +47,8 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(HttpLoggerMiddleware).forRoutes('*');
+  }
+}

@@ -40,8 +40,15 @@ export const PendingApprovalScreen: React.FC<PendingApprovalScreenProps> = ({
       showToast(`Welcome to Trainer Portal, ${name}!`);
       onNavigate('trainer-portal');
     } else {
-      showToast(`Welcome to Trainee Portal, ${name}!`);
-      onNavigate('trainee-portal');
+      // Trainee: Check if onboarding has already been completed
+      const hasOnboarded = localStorage.getItem(`cc_onboarding_completed_${email}`) === 'true';
+      if (hasOnboarded) {
+        showToast(`Welcome to Trainee Portal, ${name}!`);
+        onNavigate('trainee-portal');
+      } else {
+        showToast(`Welcome, ${name}! Let's complete your initial profile details.`);
+        onNavigate('trainee-setup');
+      }
     }
   };
 
@@ -141,29 +148,6 @@ export const PendingApprovalScreen: React.FC<PendingApprovalScreenProps> = ({
           className="w-full bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-900 border border-slate-200/90 py-2.5 rounded-lg font-medium text-sm transition-all shadow-xs cursor-pointer"
         >
           Sign out
-        </button>
-      </div>
-
-      {/* Admin Demo Actions */}
-      <div className="mt-8 pt-5 border-t border-slate-100 text-center space-y-2">
-        {!isApproved && (
-          <button
-            type="button"
-            onClick={handleSimulateApproval}
-            className="block w-full text-xs text-blue-600 hover:underline cursor-pointer"
-          >
-            Admin demo: Approve this {roleDisplay} account now
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => {
-            showToast('Switching to Admin Portal to view pending approval queue...');
-            onNavigate('admin-portal');
-          }}
-          className="block w-full text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
-        >
-          Switch to Admin Portal to approve from requests table
         </button>
       </div>
     </div>

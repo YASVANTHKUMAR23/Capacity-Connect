@@ -24,6 +24,7 @@ import {
 import { AdminTab, Screen } from '../../types';
 import { useAdminData } from '../../context/AdminDataContext';
 import { ChatbotDrawer } from './ChatbotDrawer';
+import { authApi } from '../../services/authApi';
 
 interface AdminLayoutProps {
   currentTab: AdminTab;
@@ -40,15 +41,18 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   showToast,
   children,
 }) => {
-  const { pendingApprovals, isChatbotOpen, setIsChatbotOpen } = useAdminData();
+  const { pendingApprovals, courses, announcements, isChatbotOpen, setIsChatbotOpen } = useAdminData();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     setProfileDropdownOpen(false);
+    try {
+      await authApi.logout();
+    } catch {}
     showToast('Signed out of Administrator Portal.');
     onNavigateScreen('login');
   };
@@ -674,7 +678,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                 className="w-full text-left p-2 rounded-lg hover:bg-slate-50 flex items-center justify-between"
               >
                 <span className="font-medium text-slate-800">Courses Directory</span>
-                <span className="text-slate-400">36 active</span>
+                <span className="text-slate-400">{courses.filter((c) => c.status === 'Active').length} active</span>
               </button>
               <button
                 type="button"
@@ -685,7 +689,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                 className="w-full text-left p-2 rounded-lg hover:bg-slate-50 flex items-center justify-between"
               >
                 <span className="font-medium text-slate-800">Pending Approvals</span>
-                <span className="text-red-500 font-semibold">14 waiting</span>
+                <span className="text-red-500 font-semibold">{pendingApprovals.length} waiting</span>
               </button>
               <button
                 type="button"

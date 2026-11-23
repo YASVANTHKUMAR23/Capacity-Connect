@@ -7,12 +7,18 @@ interface TrainersPageProps {
   showToast?: (msg: string) => void;
 }
 
-export const TrainersPage: React.FC<TrainersPageProps> = () => {
-  const { trainers } = useAdminData();
+export const TrainersPage: React.FC<TrainersPageProps> = ({ showToast }) => {
+  const { trainers, updateTrainer } = useAdminData();
   const [activeTab, setActiveTab] = useState<'All' | 'Active' | 'Inactive'>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [subjectFilter, setSubjectFilter] = useState('All');
   const [divisionFilter, setDivisionFilter] = useState('All');
+
+  const allCount = trainers.length;
+  const activeCount = trainers.filter((t) => t.status === 'Active').length;
+  const inactiveCount = trainers.filter((t) => t.status === 'Inactive').length;
+
+  const expertises = Array.from(new Set(trainers.map((t) => t.expertise))).filter(Boolean);
 
   const filteredTrainers = trainers.filter((t) => {
     if (activeTab !== 'All' && t.status !== activeTab) return false;
@@ -25,6 +31,16 @@ export const TrainersPage: React.FC<TrainersPageProps> = () => {
     if (subjectFilter !== 'All' && t.expertise !== subjectFilter) return false;
     return true;
   });
+
+  const handleToggleTrainerStatus = async (id: string, currentStatus: string) => {
+    const nextStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+    try {
+      await updateTrainer(id, { status: nextStatus as any });
+      showToast?.(`Trainer status updated to ${nextStatus}.`);
+    } catch {
+      showToast?.('Failed to update trainer status.');
+    }
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -39,7 +55,7 @@ export const TrainersPage: React.FC<TrainersPageProps> = () => {
               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
           }`}
         >
-          All <span className="opacity-80 ml-1">62</span>
+          All <span className="opacity-80 ml-1">{allCount}</span>
         </button>
         <button
           type="button"
@@ -50,7 +66,7 @@ export const TrainersPage: React.FC<TrainersPageProps> = () => {
               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
           }`}
         >
-          Active <span className="opacity-80 ml-1">54</span>
+          Active <span className="opacity-80 ml-1">{activeCount}</span>
         </button>
         <button
           type="button"
@@ -61,7 +77,7 @@ export const TrainersPage: React.FC<TrainersPageProps> = () => {
               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
           }`}
         >
-          Inactive <span className="opacity-80 ml-1">8</span>
+          Inactive <span className="opacity-80 ml-1">{inactiveCount}</span>
         </button>
       </div>
 
@@ -193,17 +209,23 @@ export const TrainersPage: React.FC<TrainersPageProps> = () => {
                     {t.traineesCount}
                   </td>
                   <td className="py-4 px-5 sm:px-6 whitespace-nowrap">
-                    {t.status === 'Active' ? (
-                      <span className="inline-flex items-center gap-1.5 text-emerald-700 font-semibold text-xs bg-emerald-50 px-2.5 py-1 rounded-full">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        Active
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 text-slate-500 font-semibold text-xs bg-slate-100 px-2.5 py-1 rounded-full">
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                        Inactive
-                      </span>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleTrainerStatus(t.id, t.status)}
+                      className={`inline-flex items-center gap-1.5 font-semibold text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
+                        t.status === 'Active'
+                          ? 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                          : 'text-slate-600 bg-slate-100 hover:bg-slate-200'
+                      }`}
+                      title="Click to toggle status in DB"
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          t.status === 'Active' ? 'bg-emerald-500' : 'bg-slate-400'
+                        }`}
+                      />
+                      {t.status}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -250,7 +272,7 @@ export const TrainersPage: React.FC<TrainersPageProps> = () => {
 
         {/* Desktop Pagination (preserved for non-mobile views) */}
         <div className="hidden sm:flex items-center justify-between pt-5 border-t border-slate-100 text-xs text-slate-500">
-          <span>Showing 1-7 of 62</span>
+          <span>Showing 1-{filteredTrainers.length} of {filteredTrainers.length}</span>
           <div className="flex items-center gap-2">
             <button
               type="button"
