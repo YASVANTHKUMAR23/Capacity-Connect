@@ -215,18 +215,15 @@ export const AdminDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     refreshAllData();
   }, [refreshAllData]);
 
-  // Dynamic DB polling: revalidate every 5 seconds & on window focus so external DB changes reflect immediately
+  // Refresh on tab focus only when stale. Avoid continuous polling and request loops.
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (getAccessToken()) {
-        refreshAllData();
-      }
-    }, 5000);
+    let lastFocusRefreshAt = 0;
 
     const handleFocus = () => {
-      if (getAccessToken()) {
-        refreshAllData();
-      }
+      const now = Date.now();
+      if (!getAccessToken() || now - lastFocusRefreshAt < 30_000) return;
+      lastFocusRefreshAt = now;
+      void refreshAllData();
     };
 
     const handleSessionExpired = () => {
@@ -238,7 +235,6 @@ export const AdminDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     window.addEventListener('cc_session_expired', handleSessionExpired);
 
     return () => {
-      clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('cc_session_expired', handleSessionExpired);
     };
