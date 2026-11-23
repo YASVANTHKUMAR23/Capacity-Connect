@@ -31,14 +31,14 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ showToast }) => {
   };
 
   // Dynamic calculations from live application store
-  const totalEnrollments = courses.reduce((sum, c) => sum + (c.enrolled || 0), 0) || 3420;
+  const totalEnrollments = courses.reduce((sum, c) => sum + (c.enrolled || 0), 0);
   const avgCompletionRate = courses.length > 0
     ? Math.round(courses.reduce((sum, c) => sum + (c.completion || 0), 0) / courses.length)
-    : 68;
+    : 0;
   const avgScore = subjectScores.length > 0
     ? Math.round(subjectScores.reduce((sum, s) => sum + s.score, 0) / subjectScores.length)
-    : 74;
-  const totalCertified = courses.reduce((sum, c) => sum + Math.round(((c.enrolled || 0) * (c.completion || 0)) / 100), 0) || 912;
+    : 0;
+  const totalCertified = courses.reduce((sum, c) => sum + Math.round(((c.enrolled || 0) * (c.completion || 0)) / 100), 0);
 
   // Dual line chart coordinates based on live monthlyEnrollments
   const maxAxisVal = 800;
@@ -480,12 +480,13 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ showToast }) => {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {divisions.slice(0, 4).map((divItem) => {
-              const trendStr = divItem.trend || divItem.change || '+0%';
+              const trendStr = divItem.trend || divItem.change || '0';
               const isPos = trendStr.startsWith('+');
-              const compRate = divItem.completionRate ?? 65;
-              const trainees = divItem.traineesCount ?? divItem.count ?? 150;
-              const natShare = divItem.share ?? 15;
-              const avgSc = divItem.avgScore ?? 70;
+              const compRate = divItem.completionRate ?? (avgCompletionRate || 0);
+              const trainees = divItem.traineesCount ?? divItem.count ?? 0;
+              const totalDivTrainees = divisions.reduce((acc, d) => acc + (d.count || 0), 0);
+              const natShare = totalDivTrainees > 0 ? Math.round((trainees / totalDivTrainees) * 100) : 0;
+              const avgSc = divItem.avgScore ?? (avgScore || 0);
 
               return (
                 <div key={divItem.id} className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/60 hover:bg-white hover:shadow-xs transition-all">

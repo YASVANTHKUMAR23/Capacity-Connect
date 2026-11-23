@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { adminApi, DashboardMetricsResponse } from '../services/adminApi';
+import { getAccessToken } from '../services/authApi';
 import {
   AnnouncementItem,
   CourseItem,
@@ -100,29 +101,17 @@ export const AdminDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Primary data synchronization function with backend Prisma database
   const refreshAllData = useCallback(async () => {
-    // Only fetch if authenticated to avoid throwing 401s when logged out
-    const token = getAccessToken();
-    if (!token) {
-      setIsLoading(false);
-      return;
-    }
-
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
 
     try {
-      const [
-        annList,
-        pendingList,
-        rejectedList,
-        dirList,
-        trainersList,
-        traineesList,
-        coursesList,
-        compList,
-        settingsData,
-        metricsData,
-      ] = await Promise.allSettled([
+      const token = getAccessToken();
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
+
+      const results = await Promise.allSettled([
         adminApi.getAnnouncements(),
         adminApi.getPendingApprovals(),
         adminApi.getRejectedUsers(),
@@ -134,6 +123,38 @@ export const AdminDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         adminApi.getSettings(),
         adminApi.getDashboardMetrics(),
       ]);
+
+      const [
+        annList,
+        pendingList,
+        rejectedList,
+        dirList,
+        trainersList,
+        traineesList,
+        coursesList,
+        compList,
+        settingsData,
+        metricsData,
+      ] = results;
+
+      const endpointNames = [
+        'announcements',
+        'pendingApprovals',
+        'rejectedUsers',
+        'userDirectory',
+        'trainers',
+        'trainees',
+        'courses',
+        'competencies',
+        'settings',
+        'dashboardMetrics',
+      ];
+
+      results.forEach((res, i) => {
+        if (res.status === 'rejected') {
+          console.error(`[AdminDataContext] Error syncing ${endpointNames[i]}:`, res.reason);
+        }
+      });
 
       if (annList.status === 'fulfilled' && annList.value) {
         setAnnouncements(annList.value);
@@ -182,7 +203,7 @@ export const AdminDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (m.monthlyEnrollments) setMonthlyEnrollments(m.monthlyEnrollments);
       }
     } catch (err) {
-      console.warn('Failed to refresh admin portal data from DB:', err);
+      console.error('[AdminDataContext] Failed to refresh admin portal data from DB:', err);
     } finally {
       setIsLoading(false);
       isFetchingRef.current = false;

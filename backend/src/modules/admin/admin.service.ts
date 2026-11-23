@@ -770,19 +770,27 @@ export class AdminService {
     });
 
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const currentMonthIdx = new Date().getMonth();
-    // Build last 6 months
-    const last6MonthIndices: number[] = [];
+    const now = new Date();
+    // Build exact last 6 calendar months with year and month matching
+    const last6Months: { year: number; month: number; label: string }[] = [];
     for (let i = 5; i >= 0; i--) {
-      last6MonthIndices.push((currentMonthIdx - i + 12) % 12);
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      last6Months.push({
+        year: d.getFullYear(),
+        month: d.getMonth(),
+        label: monthNames[d.getMonth()],
+      });
     }
 
-    const monthlyEnrollments = last6MonthIndices.map((mIdx) => {
-      const monthEnrollments = enrollments.filter((e) => new Date(e.enrolledAt).getMonth() === mIdx);
+    const monthlyEnrollments = last6Months.map(({ year, month, label }) => {
+      const monthEnrollments = enrollments.filter((e) => {
+        const enrolledDate = new Date(e.enrolledAt);
+        return enrolledDate.getFullYear() === year && enrolledDate.getMonth() === month;
+      });
       const enrolled = monthEnrollments.length;
       const completed = monthEnrollments.filter((e) => e.completionPercentage >= 100).length;
       return {
-        month: monthNames[mIdx],
+        month: label,
         enrolled,
         completed,
       };

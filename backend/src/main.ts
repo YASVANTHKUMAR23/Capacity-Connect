@@ -11,14 +11,21 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('port', 3000);
-  const frontendUrl = configService.get<string>('cors.origin', 'http://localhost:5173');
+  const rawCorsOrigins = configService.get<string>('cors.origin', 'http://localhost:5173');
+  const configuredOrigins = rawCorsOrigins
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+  const defaultOrigins = ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'];
+  const allowedOrigins = Array.from(new Set([...configuredOrigins, ...defaultOrigins]));
 
   // Cookies
   app.use(cookieParser());
 
   // CORS
   app.enableCors({
-    origin: [frontendUrl, 'http://localhost:3000', 'http://127.0.0.1:5173'],
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
