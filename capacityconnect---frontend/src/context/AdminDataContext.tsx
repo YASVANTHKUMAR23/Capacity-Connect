@@ -215,7 +215,7 @@ export const AdminDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     refreshAllData();
   }, [refreshAllData]);
 
-  // Refresh on tab focus only when stale. Avoid continuous polling and request loops.
+  // Refresh on tab focus only when stale (30-second cooldown). Avoid continuous polling and request loops.
   useEffect(() => {
     let lastFocusRefreshAt = 0;
 
