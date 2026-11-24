@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { RadialChart } from 'multi-layer-radial-chart';
+import 'multi-layer-radial-chart/styles.css';
 import {
   Users,
   Award,
@@ -113,10 +115,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const gw = pw / (monthlyEnrollments.length || 1);
   const bw = 22;
 
-  // Concentric Rings Configuration for Competency Building Gauge (270 deg sweep) dynamically derived from store
-  const gaugeRings = competencyGauge.map((c) => ({
-    r: c.ring.r,
-    val: c.level,
+  // Multi-layer radial chart configuration dynamically derived from competency store
+  const radialChartData = competencyGauge.map((c) => ({
+    label: c.subject,
+    value: Math.max(0, Math.min(100, c.level)),
+    max: 100,
     color: c.ring.color,
   }));
   const avgCapacity = Math.round(
@@ -775,43 +778,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </div>
           </div>
 
-          {/* Triple-Ring 270deg Gauge opening at the bottom */}
-          <div className="w-[190px] my-3.5 mx-auto relative">
-            <svg viewBox="0 0 200 200" className="block w-full" role="img" aria-label="Average capacity 58 percent">
-              {gaugeRings.map((ring) => {
-                const C = 2 * Math.PI * ring.r;
-                const sweep = C * 0.75; // 270 degree arc
-                const filledLen = (sweep * ring.val) / 100;
-                return (
-                  <g key={ring.r}>
-                    {/* Track ring */}
-                    <circle
-                      cx="100"
-                      cy="100"
-                      r={ring.r}
-                      fill="none"
-                      stroke="#e3e5f3"
-                      strokeWidth="15"
-                      strokeLinecap="round"
-                      strokeDasharray={`${sweep} ${C}`}
-                      transform="rotate(135 100 100)"
-                    />
-                    {/* Filled value ring */}
-                    <circle
-                      cx="100"
-                      cy="100"
-                      r={ring.r}
-                      fill="none"
-                      stroke={ring.color}
-                      strokeWidth="15"
-                      strokeLinecap="round"
-                      strokeDasharray={`${filledLen} ${C}`}
-                      transform="rotate(135 100 100)"
-                    />
-                  </g>
-                );
-              })}
-            </svg>
+          {/* Multi-Layer Radial Competency Gauge */}
+          <div className="w-[190px] my-3.5 mx-auto relative flex items-center justify-center">
+            <RadialChart
+              data={radialChartData}
+              size={190}
+              gap={6}
+              startAngle={135}
+              maxSweepDegrees={270}
+              rounded={true}
+              clockwise={true}
+              animate={true}
+              animationDurationMs={900}
+              showLegend={false}
+              showTooltip={true}
+            />
 
             {/* Central Capacity Readout */}
             <div className="absolute inset-0 flex flex-col items-center justify-center pb-1.5 pointer-events-none">
