@@ -115,15 +115,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const gw = pw / (monthlyEnrollments.length || 1);
   const bw = 22;
 
-  // Multi-layer radial chart configuration dynamically derived from competency store
-  const radialChartData = competencyGauge.map((c) => ({
+  // Multi-layer radial chart configuration dynamically derived from competency store (top 5 competencies)
+  const radialChartData = competencyGauge.slice(0, 5).map((c) => ({
     label: c.subject,
     value: Math.max(0, Math.min(100, c.level)),
     max: 100,
     color: c.ring.color,
   }));
   const avgCapacity = Math.round(
-    competencyGauge.reduce((acc, c) => acc + c.level, 0) / (competencyGauge.length || 1)
+    (competencyGauge.slice(0, 5).reduce((acc, c) => acc + c.level, 0) / (Math.min(competencyGauge.length, 5) || 1))
   );
 
   // Dynamic Placement Function for Bubble Circles
