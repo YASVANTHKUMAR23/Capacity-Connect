@@ -8,9 +8,14 @@ import {
   Download,
   AlertCircle,
   Sparkles,
+  Loader2,
+  Copy,
+  Check,
+  Bot,
 } from 'lucide-react';
 import { AdminTab } from '../../types';
 import { useAdminData } from '../../context/AdminDataContext';
+import { adminApi } from '../../services/adminApi';
 
 interface ChatbotDrawerProps {
   isOpen: boolean;
@@ -22,7 +27,9 @@ interface ChatMessage {
   id: string;
   sender: 'user' | 'bot';
   text?: string;
-  type?: 'text' | 'course-card' | 'trainee-card';
+  type?: 'text' | 'course-card' | 'trainee-card' | 'table' | 'chart';
+  sources?: string[];
+  data?: any;
 }
 
 export const ChatbotDrawer: React.FC<ChatbotDrawerProps> = ({
@@ -34,34 +41,27 @@ export const ChatbotDrawer: React.FC<ChatbotDrawerProps> = ({
 
   const { courses, trainees, pendingApprovals } = useAdminData();
   const [inputVal, setInputVal] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
-      id: 'm-1',
-      sender: 'user',
-      text: 'Which courses have the lowest completion rate this month?',
-    },
-    {
-      id: 'm-2',
+      id: 'm-init',
       sender: 'bot',
-      type: 'course-card',
-    },
-    {
-      id: 'm-3',
-      sender: 'user',
-      text: 'Yes, show the list.',
-    },
-    {
-      id: 'm-4',
-      sender: 'bot',
-      type: 'trainee-card',
+      text: 'Hello! I am your Capacity Connect Admin Intelligence Assistant, powered by NVIDIA NIM (Moonshot AI Kimi K3.1 Pro). All answers are grounded in real-time PostgreSQL database records.',
     },
   ]);
 
   const [toastNote, setToastNote] = useState<string | null>(null);
 
-  const handleSend = (textToSend?: string) => {
+  const handleCopy = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleSend = async (textToSend?: string) => {
     const query = textToSend || inputVal.trim();
-    if (!query) return;
+    if (!query || isLoading) return;
 
     const userMsg: ChatMessage = {
       id: `u-${Date.now()}`,
@@ -71,40 +71,42 @@ export const ChatbotDrawer: React.FC<ChatbotDrawerProps> = ({
 
     setMessages((prev) => [...prev, userMsg]);
     setInputVal('');
+    setIsLoading(true);
 
-    setTimeout(() => {
-      let botResponse: ChatMessage;
-      const lower = query.toLowerCase();
+    try {
+      // Map history for conversational context
+      const historyPayload = messages
+        .filter((m) => m.text)
+        .slice(-4)
+        .map((m) => ({
+          role: m.sender === 'user' ? ('user' as const) : ('assistant' as const),
+          text: m.text!,
+        }));
 
-      if (lower.includes('approval') || lower.includes('pending')) {
-        botResponse = {
-          id: `b-${Date.now()}`,
-          sender: 'bot',
-          text: `There are currently ${pendingApprovals.length} pending accounts waiting for review in PostgreSQL. Would you like to review them in Role Management?`,
-        };
-      } else if (lower.includes('competency') || lower.includes('gap')) {
-        botResponse = {
-          id: `b-${Date.now()}`,
-          sender: 'bot',
-          text: 'The competency scores are synchronized live from PostgreSQL user competency matrix.',
-        };
-      } else if (lower.includes('trainer') || lower.includes('top')) {
-        botResponse = {
-          id: `b-${Date.now()}`,
-          sender: 'bot',
-          text: 'Trainers are linked directly to PostgreSQL course assignments.',
-        };
-      } else {
-        const activeCourses = courses.filter((c) => c.status === 'Active').length;
-        botResponse = {
-          id: `b-${Date.now()}`,
-          sender: 'bot',
-          text: `Analyzing live IMD database for "${query}"... Found ${activeCourses} active courses across database records with ${trainees.length} verified trainees.`,
-        };
-      }
+      const res = await adminApi.sendAiChat(query, historyPayload);
 
-      setMessages((prev) => [...prev, botResponse]);
-    }, 400);
+      const botMsg: ChatMessage = {
+        id: `b-${Date.now()}`,
+        sender: 'bot',
+        text: res?.message || 'Analyzed records successfully.',
+        type: res?.type || 'text',
+        sources: res?.sources?.map((s: any) => s.entity) || [],
+        data: res?.data,
+      };
+
+      setMessages((prev) => [...prev, botMsg]);
+    } catch (err: any) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `b-err-${Date.now()}`,
+          sender: 'bot',
+          text: `An error occurred while contacting the AI intelligence assistant: ${err.message || 'Please try again.'}`,
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -200,12 +202,36 @@ export const ChatbotDrawer: React.FC<ChatbotDrawerProps> = ({
           // Bot text message
           if (m.text) {
             return (
-              <div key={m.id} className="flex gap-2.5 items-start">
+              <div key={m.id} className="flex gap-2.5 items-start group">
                 <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 mt-0.5">
-                  <MessageSquare className="w-3.5 h-3.5" />
+                  <Bot className="w-3.5 h-3.5" />
                 </div>
-                <div className="max-w-[88%] bg-slate-50 border border-slate-200/80 rounded-2xl rounded-tl-xs p-3.5 text-xs text-slate-800 leading-relaxed shadow-xs">
-                  {m.text}
+                <div className="max-w-[88%] bg-slate-50 border border-slate-200/80 rounded-2xl rounded-tl-xs p-3.5 text-xs text-slate-800 leading-relaxed shadow-xs relative">
+                  <p className="whitespace-pre-line">{m.text}</p>
+
+                  {m.sources && m.sources.length > 0 && (
+                    <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[10px] text-slate-400">
+                      <span>Source: {m.sources.join(', ')}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(m.id, m.text!)}
+                        className="text-slate-400 hover:text-slate-600 flex items-center gap-1 cursor-pointer"
+                        title="Copy message"
+                      >
+                        {copiedId === m.id ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-600" />
+                            <span className="text-emerald-600">Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -330,6 +356,15 @@ export const ChatbotDrawer: React.FC<ChatbotDrawerProps> = ({
 
           return null;
         })}
+
+        {isLoading && (
+          <div className="flex gap-2.5 items-center text-slate-500 text-xs">
+            <div className="w-7 h-7 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            </div>
+            <span>Grounding query with PostgreSQL and NVIDIA Kimi K3.1 Pro...</span>
+          </div>
+        )}
       </div>
 
       {/* Suggested quick chips */}
@@ -343,17 +378,24 @@ export const ChatbotDrawer: React.FC<ChatbotDrawerProps> = ({
         </button>
         <button
           type="button"
-          onClick={() => handleSend('Pending approvals')}
+          onClick={() => handleSend('Show trainer workload distribution')}
           className="whitespace-nowrap px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] sm:text-xs font-medium transition-colors cursor-pointer"
         >
-          Pending approvals
+          Trainer workload
         </button>
         <button
           type="button"
-          onClick={() => handleSend('Top trainers')}
+          onClick={() => handleSend('Which courses have the lowest completion rate?')}
           className="whitespace-nowrap px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] sm:text-xs font-medium transition-colors cursor-pointer"
         >
-          Top trainers
+          Lowest completion
+        </button>
+        <button
+          type="button"
+          onClick={() => handleSend('How many trainers and trainees are registered?')}
+          className="whitespace-nowrap px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] sm:text-xs font-medium transition-colors cursor-pointer"
+        >
+          User counts
         </button>
       </div>
 

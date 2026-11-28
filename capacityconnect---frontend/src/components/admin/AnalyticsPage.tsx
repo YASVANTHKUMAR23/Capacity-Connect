@@ -15,13 +15,15 @@ import {
 } from 'lucide-react';
 import { ScrollDrivenTable } from './ScrollDrivenTable';
 import { useAdminData } from '../../context/AdminDataContext';
+import { ParticipationBubbleChart } from './ParticipationBubbleChart';
+import { CardSkeleton, ChartSkeleton } from '../common/Skeleton';
 
 interface AnalyticsPageProps {
   showToast: (msg: string) => void;
 }
 
 export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ showToast }) => {
-  const { courses, monthlyEnrollments, subjectScores, divisions } = useAdminData();
+  const { courses, monthlyEnrollments, subjectScores, divisions, isLoading } = useAdminData();
   const [timeframe, setTimeframe] = useState('Last 6 months');
   const [division, setDivision] = useState('All divisions');
   const [course, setCourse] = useState('All courses');
@@ -59,6 +61,26 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ showToast }) => {
 
   const compPolyline = compCoords.map((c) => `${c.x},${c.y}`).join(' ');
   const enrPolyline = enrCoords.map((c) => `${c.x},${c.y}`).join(' ');
+
+  if (isLoading) {
+    return (
+      <div className="w-full max-w-full min-w-0 space-y-4 sm:space-y-6">
+        <div className="flex justify-between items-center">
+          <div className="h-7 w-36 bg-slate-200/80 rounded-xl animate-pulse" />
+          <div className="h-9 w-28 bg-slate-200/80 rounded-xl animate-pulse" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <CardSkeleton key={i} />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          <ChartSkeleton className="lg:col-span-7" />
+          <ChartSkeleton className="lg:col-span-5" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-full min-w-0 space-y-4 sm:space-y-6">
@@ -271,31 +293,62 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ showToast }) => {
         </div>
 
         {/* Average score by subject (5 cols) - Rendered dynamically from live subjectScores */}
-        <div className="lg:col-span-5 bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs">
+        <div className="lg:col-span-5 bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-slate-900 text-sm">Average score by subject</h3>
             <span className="text-[11px] text-slate-400 font-medium">Percent</span>
           </div>
 
-          <div className="h-56 flex items-end justify-between px-4 pt-4">
-            {subjectScores.map((subj) => {
-              const barHeight = Math.max(20, Math.round((subj.score / 100) * 144));
-              return (
-                <div key={subj.subject} className="flex flex-col items-center gap-2 group relative">
-                  <div
-                    className="w-9 bg-blue-600 rounded-t-lg transition-all duration-300 group-hover:bg-blue-700"
-                    style={{ height: `${barHeight}px` }}
-                    title={`${subj.subject}: ${subj.score}%`}
-                  />
-                  <span className="text-[11px] text-slate-500 font-medium">{subj.subject}</span>
-                  {/* Tooltip on hover */}
-                  <div className="absolute -top-7 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded shadow-sm pointer-events-none whitespace-nowrap">
-                    {subj.score}%
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {subjectScores.length === 0 ? (
+            <div className="h-56 flex items-center justify-center text-xs text-slate-400">
+              No subject score data available
+            </div>
+          ) : (
+            <div className="w-full overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+              <div
+                className="h-56 flex items-end px-2 pt-6 min-w-full"
+                style={{
+                  gap: '16px',
+                  justifyContent: subjectScores.length <= 4 ? 'space-around' : 'flex-start',
+                }}
+              >
+                {subjectScores.map((subj) => {
+                  const barHeight = Math.max(16, Math.min(144, Math.round((subj.score / 100) * 144)));
+                  return (
+                    <div
+                      key={subj.subject}
+                      className="flex flex-col items-center group relative shrink-0"
+                      style={{ width: '72px' }}
+                    >
+                      {/* Bar Container with fixed height matching max scale */}
+                      <div className="h-36 w-full flex items-end justify-center">
+                        <div
+                          className="w-8 sm:w-9 bg-blue-600 rounded-t-lg transition-all duration-300 group-hover:bg-blue-700 cursor-pointer shadow-2xs"
+                          style={{ height: `${barHeight}px` }}
+                          title={`${subj.subject}: ${subj.score}%`}
+                        />
+                      </div>
+
+                      {/* Tooltip on hover */}
+                      <div className="absolute top-2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-[10px] font-semibold px-2 py-0.5 rounded shadow-md pointer-events-none whitespace-nowrap z-20">
+                        {subj.score}%
+                      </div>
+
+                      {/* Multiline wrapped label */}
+                      <div className="mt-2 w-full text-center px-0.5">
+                        <span
+                          className="text-[11px] text-slate-500 font-medium leading-tight block break-words line-clamp-2"
+                          title={subj.subject}
+                        >
+                          {subj.subject}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -471,6 +524,32 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ showToast }) => {
             <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
             <span>{divisions.length} Regional Divisions Active</span>
           </span>
+        </div>
+
+        {/* Dynamic Overlapping Bubble Chart Visualization */}
+        <div className="bg-slate-50/70 rounded-2xl p-4 sm:p-6 border border-slate-200/80">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 tracking-tight">
+                Division Trainee Density & Regional Cluster
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Proportional overlapping distribution. Bubble area scales with active division participation.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+              <span className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />
+                <span>Area ∝ Participation</span>
+              </span>
+              <span className="text-slate-300">•</span>
+              <span>Sorted by density</span>
+            </div>
+          </div>
+
+          <div className="max-w-[420px] mx-auto py-2">
+            <ParticipationBubbleChart data={divisions} />
+          </div>
         </div>
 
         {/* Top 4 Divisions Highlight Cards */}

@@ -191,4 +191,34 @@ export const adminApi = {
     const res = await authFetch<DashboardMetricsResponse>('/admin/dashboard/metrics');
     return res.data!;
   },
+
+  // 8. Dedicated Analytics Endpoints
+  async getAnalyticsOverview(): Promise<any> {
+    const res = await authFetch('/admin/analytics/overview');
+    return res.data;
+  },
+
+  async getAnalyticsEnrollments(): Promise<any> {
+    const res = await authFetch('/admin/analytics/enrollments');
+    return res.data;
+  },
+
+  async getAnalyticsAssessments(): Promise<any> {
+    const res = await authFetch('/admin/analytics/assessments');
+    return res.data;
+  },
+
+  async getAnalyticsParticipation(): Promise<any> {
+    const res = await authFetch('/admin/analytics/participation');
+    return res.data;
+  },
+
+  // 9. NVIDIA Kimi K3.1 Pro AI Assistant
+  async sendAiChat(question: string, history?: Array<{ role: 'user' | 'assistant'; text: string }>): Promise<any> {
+    const res = await authFetch('/admin/ai/chat', {
+      method: 'POST',
+      body: JSON.stringify({ question, history }),
+    });
+    return res.data;
+  },
 };

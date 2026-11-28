@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { Search, ChevronDown, SlidersHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAdminData } from '../../context/AdminDataContext';
 import { ScrollDrivenTable } from './ScrollDrivenTable';
+import { TableSkeleton } from '../common/Skeleton';
 
 interface TraineesPageProps {
   showToast?: (msg: string) => void;
 }
 
 export const TraineesPage: React.FC<TraineesPageProps> = ({ showToast }) => {
-  const { trainees, updateTrainee } = useAdminData();
+  const { trainees, updateTrainee, isLoading } = useAdminData();
   const [activeTab, setActiveTab] = useState<'All' | 'Active' | 'Inactive'>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [divisionFilter, setDivisionFilter] = useState('All');
@@ -39,6 +40,21 @@ export const TraineesPage: React.FC<TraineesPageProps> = ({ showToast }) => {
       showToast?.('Failed to update trainee status in DB.');
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="w-full max-w-full min-w-0 space-y-4 sm:space-y-6">
+        <div className="flex justify-between items-center">
+          <div className="space-y-1.5">
+            <div className="h-7 w-36 bg-slate-200/80 rounded-xl animate-pulse" />
+            <div className="h-4 w-52 bg-slate-200/80 rounded-xl animate-pulse" />
+          </div>
+          <div className="h-9 w-28 bg-slate-200/80 rounded-xl animate-pulse" />
+        </div>
+        <TableSkeleton rows={6} cols={6} />
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-full min-w-0 space-y-4 sm:space-y-6">

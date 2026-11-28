@@ -564,27 +564,28 @@ export class AdminService {
     return comps.map((c, idx) => {
       const avgScore = c.scores.length > 0
         ? Math.round(c.scores.reduce((sum, s) => sum + s.score, 0) / c.scores.length)
-        : 70;
+        : null;
 
       const targetScore = c.scores.length > 0 && c.scores[0].targetScore
         ? Math.round(c.scores[0].targetScore)
         : 80;
 
-      const diff = avgScore - targetScore;
-      const changeStr = diff >= 0 ? `+${diff}%` : `${diff}%`;
+      const diff = avgScore !== null ? avgScore - targetScore : null;
+      const changeStr = diff !== null ? (diff >= 0 ? `+${diff}%` : `${diff}%`) : 'N/A';
 
       return {
         id: c.id,
         subject: c.name,
-        score: avgScore,
+        score: avgScore !== null ? avgScore : 0,
+        unmeasured: avgScore === null,
         change: changeStr,
-        isPositive: diff >= 0,
-        level: avgScore,
+        isPositive: diff !== null ? diff >= 0 : false,
+        level: avgScore !== null ? avgScore : 0,
         targetScore,
         category: c.category,
         ring: {
           r: 28 + idx * 8,
-          val: avgScore,
+          val: avgScore !== null ? avgScore : 0,
           color: c.color || '#1f5eff',
         },
       };
@@ -796,14 +797,195 @@ export class AdminService {
       };
     });
 
+    // Total certificates issued
+    const totalCertificates = await this.prisma.certificate.count();
+
+    // Average assessment score across all attempts
+    const attempts = await this.prisma.assessmentAttempt.findMany({ select: { score: true, passed: true } });
+    const avgAssessmentScore = attempts.length > 0
+      ? Math.round(attempts.reduce((acc, a) => acc + (a.score || 0), 0) / attempts.length)
+      : 0;
+
+    // Assessment pass rate
+    const passedAttemptsCount = attempts.filter((a) => a.passed).length;
+    const assessmentPassRate = attempts.length > 0
+      ? Math.round((passedAttemptsCount / attempts.length) * 100)
+      : 0;
+
+    // Course completion rate
+    const totalEnrollmentsCount = enrollments.length;
+    const completedEnrollmentsCount = enrollments.filter((e) => e.completionPercentage >= 100).length;
+    const courseCompletionRate = totalEnrollmentsCount > 0
+      ? Math.round((completedEnrollmentsCount / totalEnrollmentsCount) * 100)
+      : 0;
+
     return {
       totalUsers,
       totalTrainers,
       totalTrainees,
       pendingCount,
       activeCoursesCount,
+      totalCertificates,
+      totalEnrollmentsCount,
+      completedEnrollmentsCount,
+      courseCompletionRate,
+      avgAssessmentScore,
+      assessmentPassRate,
       divisionStats,
       monthlyEnrollments,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 8. DEDICATED ANALYTICS ENDPOINTS
+  // ---------------------------------------------------------------------------
+  async getAnalyticsOverview(filters?: { timeframe?: string; divisionId?: string; courseId?: string }) {
+    const totalUsers = await this.prisma.user.count();
+    const totalTrainers = await this.prisma.user.count({ where: { role: Role.TRAINER } });
+    const totalTrainees = await this.prisma.user.count({ where: { role: Role.TRAINEE } });
+    const totalCourses = await this.prisma.course.count({ where: { status: CourseStatus.ACTIVE } });
+    const totalCertificates = await this.prisma.certificate.count();
+
+    const enrollmentWhere: any = {};
+    if (filters?.courseId) {
+      enrollmentWhere.courseId = filters.courseId;
+    }
+
+    const enrollments = await this.prisma.courseEnrollment.findMany({
+      where: enrollmentWhere,
+      select: {
+        id: true,
+        completionPercentage: true,
+        enrolledAt: true,
+        completedAt: true,
+      },
+    });
+
+    const totalEnrollments = enrollments.length;
+    const completedEnrollments = enrollments.filter((e) => e.completionPercentage >= 100).length;
+    const completionRate = totalEnrollments > 0 ? Math.round((completedEnrollments / totalEnrollments) * 100) : 0;
+
+    const attempts = await this.prisma.assessmentAttempt.findMany({
+      select: { score: true, passed: true, submittedAt: true },
+    });
+    const avgAssessmentScore = attempts.length > 0
+      ? Math.round(attempts.reduce((sum, a) => sum + (a.score || 0), 0) / attempts.length)
+      : 0;
+    const passRate = attempts.length > 0
+      ? Math.round((attempts.filter((a) => a.passed).length / attempts.length) * 100)
+      : 0;
+
+    const compScores = await this.prisma.userCompetencyScore.findMany({ select: { score: true } });
+    const avgCompetencyScore = compScores.length > 0
+      ? Math.round(compScores.reduce((sum, c) => sum + (c.score || 0), 0) / compScores.length)
+      : 0;
+
+    return {
+      totalUsers,
+      totalTrainers,
+      totalTrainees,
+      totalCourses,
+      totalEnrollments,
+      completedEnrollments,
+      completionRate,
+      avgAssessmentScore,
+      assessmentPassRate: passRate,
+      totalCertificates,
+      avgCompetencyScore,
+    };
+  }
+
+  async getAnalyticsEnrollments() {
+    const enrollments = await this.prisma.courseEnrollment.findMany({
+      select: { enrolledAt: true, completionPercentage: true },
+    });
+
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const now = new Date();
+    const result = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      const monthItems = enrollments.filter((e) => {
+        const itemDate = new Date(e.enrolledAt);
+        return itemDate.getFullYear() === y && itemDate.getMonth() === m;
+      });
+      result.push({
+        month: monthNames[m],
+        enrolled: monthItems.length,
+        completed: monthItems.filter((e) => e.completionPercentage >= 100).length,
+      });
+    }
+    return result;
+  }
+
+  async getAnalyticsAssessments() {
+    const attempts = await this.prisma.assessmentAttempt.findMany({
+      include: {
+        assessment: { select: { title: true } },
+      },
+    });
+
+    const totalAttempts = attempts.length;
+    const passed = attempts.filter((a) => a.passed).length;
+    const failed = totalAttempts - passed;
+    const avgScore = totalAttempts > 0
+      ? Math.round(attempts.reduce((sum, a) => sum + (a.score || 0), 0) / totalAttempts)
+      : 0;
+
+    return {
+      totalAttempts,
+      passed,
+      failed,
+      passRate: totalAttempts > 0 ? Math.round((passed / totalAttempts) * 100) : 0,
+      avgScore,
+    };
+  }
+
+  async getAnalyticsParticipation() {
+    const divisions = await this.prisma.division.findMany({
+      include: {
+        userProfiles: {
+          include: {
+            user: {
+              include: {
+                enrollments: true,
+                issuedCertificates: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return divisions.map((d) => {
+      const traineesCount = d.userProfiles.length;
+      let totalEnrolled = 0;
+      let totalCompleted = 0;
+      let certCount = 0;
+
+      d.userProfiles.forEach((p) => {
+        if (p.user) {
+          totalEnrolled += p.user.enrollments.length;
+          totalCompleted += p.user.enrollments.filter((e) => e.completionPercentage >= 100).length;
+          certCount += p.user.issuedCertificates.length;
+        }
+      });
+
+      const completionRate = totalEnrolled > 0 ? Math.round((totalCompleted / totalEnrolled) * 100) : 0;
+
+      return {
+        id: d.id,
+        name: d.name,
+        zone: d.zone || 'Central',
+        count: traineesCount,
+        traineesCount,
+        color: d.color || '#1f5eff',
+        completionRate,
+        certifiedCount: certCount,
+        status: completionRate >= 70 ? 'On Track' : 'Attention',
+      };
+    });
   }
 }

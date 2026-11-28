@@ -24,13 +24,14 @@ import {
 import { useAdminData } from '../../context/AdminDataContext';
 import { PendingApprovalItem, UserDirectoryItem } from '../../types';
 import { ScrollDrivenTable } from './ScrollDrivenTable';
+import { CardSkeleton, TableSkeleton } from '../common/Skeleton';
 
 interface RoleManagementPageProps {
   showToast: (msg: string) => void;
 }
 
 export const RoleManagementPage: React.FC<RoleManagementPageProps> = ({ showToast }) => {
-  const { pendingApprovals, approveUser, rejectUser, rejectedRecords, userDirectory, updateUserRole } =
+  const { pendingApprovals, approveUser, rejectUser, rejectedRecords, userDirectory, updateUserRole, isLoading } =
     useAdminData();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -92,6 +93,15 @@ export const RoleManagementPage: React.FC<RoleManagementPageProps> = ({ showToas
       u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.role.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  if (isLoading) {
+    return (
+      <div className="w-full max-w-full min-w-0 space-y-4 sm:space-y-6">
+        <TableSkeleton rows={5} cols={5} />
+        <TableSkeleton rows={6} cols={6} />
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-full min-w-0 space-y-4 sm:space-y-6">

@@ -90,6 +90,9 @@ export const AdminDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const isFetchingRef = useRef(false);
+  // Session-scoped flag ensuring initial refresh runs strictly once per app opening or login session
+  const hasCompletedInitialSyncRef = useRef(false);
+  const activeRefreshPromiseRef = useRef<Promise<void> | null>(null);
 
   // Subject scores dynamically derived from real competencies
   const subjectScores: SubjectScoreItem[] = competencyGauge.map((c) => ({
@@ -101,142 +104,169 @@ export const AdminDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Primary data synchronization function with backend Prisma database
   const refreshAllData = useCallback(async () => {
-    if (isFetchingRef.current) return;
-    isFetchingRef.current = true;
-
-    try {
-      const token = getAccessToken();
-      if (!token) {
-        setIsLoading(false);
-        return;
-      }
-
-      const results = await Promise.allSettled([
-        adminApi.getAnnouncements(),
-        adminApi.getPendingApprovals(),
-        adminApi.getRejectedUsers(),
-        adminApi.getUserDirectory(),
-        adminApi.getTrainers(),
-        adminApi.getTrainees(),
-        adminApi.getCourses(),
-        adminApi.getCompetencies(),
-        adminApi.getSettings(),
-        adminApi.getDashboardMetrics(),
-      ]);
-
-      const [
-        annList,
-        pendingList,
-        rejectedList,
-        dirList,
-        trainersList,
-        traineesList,
-        coursesList,
-        compList,
-        settingsData,
-        metricsData,
-      ] = results;
-
-      const endpointNames = [
-        'announcements',
-        'pendingApprovals',
-        'rejectedUsers',
-        'userDirectory',
-        'trainers',
-        'trainees',
-        'courses',
-        'competencies',
-        'settings',
-        'dashboardMetrics',
-      ];
-
-      results.forEach((res, i) => {
-        if (res.status === 'rejected') {
-          console.error(`[AdminDataContext] Error syncing ${endpointNames[i]}:`, res.reason);
-        }
-      });
-
-      if (annList.status === 'fulfilled' && annList.value) {
-        setAnnouncements(annList.value);
-        setSelectedAnnouncementId((prev) => {
-          if (prev) return prev;
-          const pinned = annList.value.find((a) => a.isPinned);
-          return pinned ? pinned.id : annList.value[0]?.id || '';
-        });
-      }
-
-      if (pendingList.status === 'fulfilled' && pendingList.value) {
-        setPendingApprovals(pendingList.value);
-      }
-
-      if (rejectedList.status === 'fulfilled' && rejectedList.value) {
-        setRejectedRecords(rejectedList.value);
-      }
-
-      if (dirList.status === 'fulfilled' && dirList.value) {
-        setUserDirectory(dirList.value);
-      }
-
-      if (trainersList.status === 'fulfilled' && trainersList.value) {
-        setTrainers(trainersList.value);
-      }
-
-      if (traineesList.status === 'fulfilled' && traineesList.value) {
-        setTrainees(traineesList.value);
-      }
-
-      if (coursesList.status === 'fulfilled' && coursesList.value) {
-        setCourses(coursesList.value);
-      }
-
-      if (compList.status === 'fulfilled' && compList.value) {
-        setCompetencyGauge(compList.value);
-      }
-
-      if (settingsData.status === 'fulfilled' && settingsData.value) {
-        setSettings(settingsData.value);
-      }
-
-      if (metricsData.status === 'fulfilled' && metricsData.value) {
-        const m = metricsData.value as DashboardMetricsResponse;
-        if (m.divisionStats) setDivisions(m.divisionStats);
-        if (m.monthlyEnrollments) setMonthlyEnrollments(m.monthlyEnrollments);
-      }
-    } catch (err) {
-      console.error('[AdminDataContext] Failed to refresh admin portal data from DB:', err);
-    } finally {
-      setIsLoading(false);
-      isFetchingRef.current = false;
+    // If a refresh is already in-flight, return the existing active promise (deduplication)
+    if (activeRefreshPromiseRef.current) {
+      return activeRefreshPromiseRef.current;
     }
+
+    const refreshPromise = (async () => {
+      isFetchingRef.current = true;
+      try {
+        const token = getAccessToken();
+        if (!token) {
+          setIsLoading(false);
+          hasCompletedInitialSyncRef.current = false;
+          return;
+        }
+
+        const results = await Promise.allSettled([
+          adminApi.getAnnouncements(),
+          adminApi.getPendingApprovals(),
+          adminApi.getRejectedUsers(),
+          adminApi.getUserDirectory(),
+          adminApi.getTrainers(),
+          adminApi.getTrainees(),
+          adminApi.getCourses(),
+          adminApi.getCompetencies(),
+          adminApi.getSettings(),
+          adminApi.getDashboardMetrics(),
+        ]);
+
+        const [
+          annList,
+          pendingList,
+          rejectedList,
+          dirList,
+          trainersList,
+          traineesList,
+          coursesList,
+          compList,
+          settingsData,
+          metricsData,
+        ] = results;
+
+        const endpointNames = [
+          'announcements',
+          'pendingApprovals',
+          'rejectedUsers',
+          'userDirectory',
+          'trainers',
+          'trainees',
+          'courses',
+          'competencies',
+          'settings',
+          'dashboardMetrics',
+        ];
+
+        results.forEach((res, i) => {
+          if (res.status === 'rejected') {
+            console.error(`[AdminDataContext] Error syncing ${endpointNames[i]}:`, res.reason);
+          }
+        });
+
+        if (annList.status === 'fulfilled' && annList.value) {
+          setAnnouncements(annList.value);
+          setSelectedAnnouncementId((prev) => {
+            if (prev) return prev;
+            const pinned = annList.value.find((a) => a.isPinned);
+            return pinned ? pinned.id : annList.value[0]?.id || '';
+          });
+        }
+
+        if (pendingList.status === 'fulfilled' && pendingList.value) {
+          setPendingApprovals(pendingList.value);
+        }
+
+        if (rejectedList.status === 'fulfilled' && rejectedList.value) {
+          setRejectedRecords(rejectedList.value);
+        }
+
+        if (dirList.status === 'fulfilled' && dirList.value) {
+          setUserDirectory(dirList.value);
+        }
+
+        if (trainersList.status === 'fulfilled' && trainersList.value) {
+          setTrainers(trainersList.value);
+        }
+
+        if (traineesList.status === 'fulfilled' && traineesList.value) {
+          setTrainees(traineesList.value);
+        }
+
+        if (coursesList.status === 'fulfilled' && coursesList.value) {
+          setCourses(coursesList.value);
+        }
+
+        if (compList.status === 'fulfilled' && compList.value) {
+          setCompetencyGauge(compList.value);
+        }
+
+        if (settingsData.status === 'fulfilled' && settingsData.value) {
+          setSettings(settingsData.value);
+        }
+
+        if (metricsData.status === 'fulfilled' && metricsData.value) {
+          const m = metricsData.value as DashboardMetricsResponse;
+          if (m.divisionStats) setDivisions(m.divisionStats);
+          if (m.monthlyEnrollments) setMonthlyEnrollments(m.monthlyEnrollments);
+        }
+
+        // Mark initial synchronization complete once all requests have settled and state is updated
+        hasCompletedInitialSyncRef.current = true;
+      } catch (err) {
+        console.error('[AdminDataContext] Failed to refresh admin portal data from DB:', err);
+      } finally {
+        setIsLoading(false);
+        isFetchingRef.current = false;
+        activeRefreshPromiseRef.current = null;
+      }
+    })();
+
+    activeRefreshPromiseRef.current = refreshPromise;
+    return refreshPromise;
   }, []);
 
-  // Initial load on mount
+  // Controlled Initial Lifecycle: runs ONCE when application opens with restored session
   useEffect(() => {
-    refreshAllData();
+    // If not authenticated or already completed for this app opening, do not execute
+    if (hasCompletedInitialSyncRef.current) {
+      setIsLoading(false);
+      return;
+    }
+
+    const token = getAccessToken();
+    if (token) {
+      void refreshAllData();
+    } else {
+      setIsLoading(false);
+    }
   }, [refreshAllData]);
 
-  // Refresh on tab focus only when stale (30-second cooldown). Avoid continuous polling and request loops.
+  // Auth Lifecycle Listeners:
+  // - On successful login: trigger immediate fresh initial sync and show skeleton until settled
+  // - On logout / session expiry: reset initial sync ref so the next login session runs a fresh sync
   useEffect(() => {
-    let lastFocusRefreshAt = 0;
-
-    const handleFocus = () => {
-      const now = Date.now();
-      if (!getAccessToken() || now - lastFocusRefreshAt < 30_000) return;
-      lastFocusRefreshAt = now;
+    const handleLogin = () => {
+      hasCompletedInitialSyncRef.current = false;
+      setIsLoading(true);
       void refreshAllData();
     };
 
-    const handleSessionExpired = () => {
+    const handleLogoutOrExpired = () => {
+      hasCompletedInitialSyncRef.current = false;
       setIsLoading(false);
       isFetchingRef.current = false;
+      activeRefreshPromiseRef.current = null;
     };
 
-    window.addEventListener('focus', handleFocus);
-    window.addEventListener('cc_session_expired', handleSessionExpired);
+    window.addEventListener('cc_auth_login', handleLogin);
+    window.addEventListener('cc_auth_logout', handleLogoutOrExpired);
+    window.addEventListener('cc_session_expired', handleLogoutOrExpired);
 
     return () => {
-      window.removeEventListener('focus', handleFocus);
-      window.removeEventListener('cc_session_expired', handleSessionExpired);
+      window.removeEventListener('cc_auth_login', handleLogin);
+      window.removeEventListener('cc_auth_logout', handleLogoutOrExpired);
+      window.removeEventListener('cc_session_expired', handleLogoutOrExpired);
     };
   }, [refreshAllData]);
 

@@ -168,4 +168,25 @@ export class AdminController {
   async getDashboardData() {
     return { success: true, data: await this.adminService.getDashboardData() };
   }
+
+  // 8. Analytics Dedicated Endpoints
+  @Get('analytics/overview')
+  async getAnalyticsOverview() {
+    return { success: true, data: await this.adminService.getAnalyticsOverview() };
+  }
+
+  @Get('analytics/enrollments')
+  async getAnalyticsEnrollments() {
+    return { success: true, data: await this.adminService.getAnalyticsEnrollments() };
+  }
+
+  @Get('analytics/assessments')
+  async getAnalyticsAssessments() {
+    return { success: true, data: await this.adminService.getAnalyticsAssessments() };
+  }
+
+  @Get('analytics/participation')
+  async getAnalyticsParticipation() {
+    return { success: true, data: await this.adminService.getAnalyticsParticipation() };
+  }
 }

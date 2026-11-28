@@ -178,6 +178,9 @@ export const authApi = {
 
     if (res.accessToken) {
       setAccessToken(res.accessToken);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('cc_auth_login', { detail: { user: res.user } }));
+      }
     }
     return res;
   },
@@ -193,6 +196,7 @@ export const authApi = {
         localStorage.removeItem('cc_active_admin_tab');
         localStorage.removeItem('cc_active_trainer_tab');
         localStorage.removeItem('cc_active_trainee_tab');
+        window.dispatchEvent(new Event('cc_auth_logout'));
       }
     }
   },

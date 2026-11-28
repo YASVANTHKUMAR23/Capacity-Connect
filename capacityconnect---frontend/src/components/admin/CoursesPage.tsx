@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { Search, ChevronDown, ChevronLeft, ChevronRight, SlidersHorizontal, Plus, Trash2, Power } from 'lucide-react';
 import { useAdminData } from '../../context/AdminDataContext';
 import { ScrollDrivenTable } from './ScrollDrivenTable';
+import { TableSkeleton } from '../common/Skeleton';
 
 interface CoursesPageProps {
   showToast?: (msg: string) => void;
 }
 
 export const CoursesPage: React.FC<CoursesPageProps> = ({ showToast }) => {
-  const { courses, createCourse, updateCourse, deleteCourse } = useAdminData();
+  const { courses, createCourse, updateCourse, deleteCourse, isLoading } = useAdminData();
   const [activeTab, setActiveTab] = useState<'Active' | 'Inactive'>('Active');
   const [searchQuery, setSearchQuery] = useState('');
   const [subjectFilter, setSubjectFilter] = useState('All');
@@ -74,6 +75,21 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({ showToast }) => {
       setIsSubmitting(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4 sm:space-y-6 w-full max-w-full min-w-0">
+        <div className="flex justify-between items-center">
+          <div className="space-y-1.5">
+            <div className="h-7 w-40 bg-slate-200/80 rounded-xl animate-pulse" />
+            <div className="h-4 w-60 bg-slate-200/80 rounded-xl animate-pulse" />
+          </div>
+          <div className="h-9 w-32 bg-slate-200/80 rounded-xl animate-pulse" />
+        </div>
+        <TableSkeleton rows={6} cols={6} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 sm:space-y-6 w-full max-w-full min-w-0">

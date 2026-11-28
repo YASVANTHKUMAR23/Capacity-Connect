@@ -53,6 +53,7 @@ interface TraineeDataContextType {
   savedCourseIds: string[];
   toggleSaveCourse: (courseId: string) => void;
   isCourseSaved: (courseId: string) => boolean;
+  isLoading: boolean;
 
   // Real Application Data for Graphs
   monthlyProgress: TraineeMonthlyProgressItem[];
@@ -813,6 +814,7 @@ export const TraineeDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         monthlyProgress: unified.traineeMonthlyProgress,
         weeklyEngagement: unified.traineeWeeklyEngagement,
         recordStudyHour: unified.recordTraineeStudyActivity,
+        isLoading: false,
       }}
     >
       {children}

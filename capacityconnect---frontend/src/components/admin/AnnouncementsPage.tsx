@@ -18,6 +18,7 @@ import {
 import { AnnouncementItem } from '../../types';
 import { useAdminData } from '../../context/AdminDataContext';
 import { ScrollDrivenTable } from './ScrollDrivenTable';
+import { TableSkeleton } from '../common/Skeleton';
 
 interface AnnouncementsPageProps {
   showToast: (msg: string) => void;
@@ -31,6 +32,7 @@ export const AnnouncementsPage: React.FC<AnnouncementsPageProps> = ({ showToast 
     deleteAnnouncement,
     selectedAnnouncementId,
     setSelectedAnnouncementId,
+    isLoading,
   } = useAdminData();
 
   const [activeFilter, setActiveFilter] = useState('All');
@@ -118,6 +120,28 @@ export const AnnouncementsPage: React.FC<AnnouncementsPageProps> = ({ showToast 
     if (activeFilter === 'New content') return a.type === 'New content';
     return true;
   });
+
+  if (isLoading) {
+    return (
+      <div className="w-full max-w-full min-w-0 space-y-4 sm:space-y-6">
+        <div className="flex justify-between items-center">
+          <div className="h-7 w-48 bg-slate-200/80 rounded-xl animate-pulse" />
+          <div className="h-9 w-32 bg-slate-200/80 rounded-xl animate-pulse" />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          <div className="lg:col-span-8">
+            <TableSkeleton rows={6} cols={4} />
+          </div>
+          <div className="lg:col-span-4 bg-white rounded-2xl p-5 border border-slate-200/90 shadow-2xs space-y-4">
+            <div className="h-5 w-32 bg-slate-200/80 rounded-xl animate-pulse" />
+            <div className="h-32 w-full bg-slate-200/80 rounded-xl animate-pulse" />
+            <div className="h-4 w-3/4 bg-slate-200/80 rounded-xl animate-pulse" />
+            <div className="h-20 w-full bg-slate-200/80 rounded-xl animate-pulse" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-full min-w-0 space-y-4 sm:space-y-6">

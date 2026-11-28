@@ -2,9 +2,10 @@ import React from 'react';
 import { Target, X, LayoutGrid, Award } from 'lucide-react';
 import { ScrollDrivenTable } from './ScrollDrivenTable';
 import { useAdminData } from '../../context/AdminDataContext';
+import { CardSkeleton, TableSkeleton } from '../common/Skeleton';
 
 export const CompetencyPage: React.FC = () => {
-  const { competencyGauge, trainers, trainees } = useAdminData();
+  const { competencyGauge, trainers, trainees, isLoading } = useAdminData();
 
   const avgCapacity = Math.round(
     competencyGauge.reduce((acc, c) => acc + (c.level || 70), 0) / (competencyGauge.length || 1)
@@ -37,6 +38,19 @@ export const CompetencyPage: React.FC = () => {
   const meetsPct = Math.round((meetsTarget / totalComp) * 100);
   const minorPct = Math.round((minorGap / totalComp) * 100);
   const majorPct = Math.round((majorGap / totalComp) * 100);
+
+  if (isLoading) {
+    return (
+      <div className="w-full max-w-full min-w-0 space-y-4 sm:space-y-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <CardSkeleton key={i} />
+          ))}
+        </div>
+        <TableSkeleton rows={6} cols={6} />
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-full min-w-0 space-y-4 sm:space-y-6">

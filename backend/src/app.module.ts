@@ -12,6 +12,7 @@ import { EmailModule } from './modules/email/email.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { AdminAiModule } from './modules/admin-ai/admin-ai.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { HttpLoggerMiddleware } from './common/middleware/http-logger.middleware';
 
@@ -35,6 +36,7 @@ import { HttpLoggerMiddleware } from './common/middleware/http-logger.middleware
     SessionsModule,
     AuditModule,
     AdminModule,
+    AdminAiModule,
   ],
   providers: [
     {

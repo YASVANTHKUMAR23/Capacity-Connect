@@ -28,6 +28,8 @@ import { AdminTab } from '../../types';
 import { useAdminData } from '../../context/AdminDataContext';
 import { ScrollDrivenTable } from './ScrollDrivenTable';
 import { DashboardAnnouncementCard } from '../common/DashboardAnnouncementCard';
+import { ParticipationBubbleChart } from './ParticipationBubbleChart';
+import { DashboardSkeleton } from '../common/Skeleton';
 
 interface DashboardPageProps {
   onNavigateTab: (tab: AdminTab) => void;
@@ -66,6 +68,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     divisions,
     addDivision,
     competencyGauge,
+    isLoading,
   } = useAdminData();
   const [enrollmentTimeframe, setEnrollmentTimeframe] = useState('This year');
   const [enrollmentMenuOpen, setEnrollmentMenuOpen] = useState(false);
@@ -236,6 +239,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   };
 
 
+
+  if (isLoading) {
+    return <DashboardSkeleton />;
+  }
 
   return (
     <div className="w-full max-w-full min-w-0 space-y-4 sm:space-y-6">
@@ -783,7 +790,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <RadialChart
               data={radialChartData}
               size={190}
-              gap={6}
+              ringWidth={9}
+              gap={4}
               startAngle={135}
               maxSweepDegrees={270}
               rounded={true}
@@ -792,15 +800,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               animationDurationMs={900}
               showLegend={false}
               showTooltip={true}
-            />
-
-            {/* Central Capacity Readout */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center pb-1.5 pointer-events-none">
-              <strong className="text-[26px] font-semibold tracking-[-0.02em] text-[#14162b]">
-                {avgCapacity}%
-              </strong>
-              <span className="text-[9px] text-[#6b6f8a] -mt-0.5">Avg. capacity</span>
-            </div>
+            >
+              {/* Central Capacity Readout */}
+              <div className="flex flex-col items-center justify-center pb-2 select-none pointer-events-none">
+                <strong className="text-[22px] font-bold tracking-tight text-[#14162b] leading-none">
+                  {avgCapacity}%
+                </strong>
+                <span className="text-[9px] font-medium text-[#6b6f8a] mt-0.5 whitespace-nowrap">
+                  Avg. capacity
+                </span>
+              </div>
+            </RadialChart>
           </div>
 
           {/* Top 3 Label after circular gauge */}
@@ -983,35 +993,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </div>
           </div>
 
-          {/* Bubbles aspect ratio visualization: Dynamic generation & organic placement */}
-          <div className="relative aspect-[150/118] my-3.5 mx-auto max-w-[300px]">
-            {divisions.map((d, index) => {
-              const placement = getBubblePlacement(index, d.count, divisions.length);
-              const isHovered = hoveredDivisionId === d.id;
-              return (
-                <div
-                  key={d.id}
-                  onMouseEnter={() => setHoveredDivisionId(d.id)}
-                  onMouseLeave={() => setHoveredDivisionId(null)}
-                  className={`absolute rounded-full grid place-items-center text-white font-semibold border-2 border-white box-border shadow-md transition-all duration-300 cursor-pointer select-none ${
-                    isHovered ? 'scale-110 z-30 ring-2 ring-blue-500' : 'hover:scale-105'
-                  }`}
-                  style={{
-                    ...placement,
-                    background: d.color,
-                  }}
-                  title={`${d.name}: ${d.count} trainees (${d.change})`}
-                >
-                  <span className="tabular-nums select-none">{d.count}</span>
-                  {/* Floating tooltip on hover */}
-                  {isHovered && (
-                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 pointer-events-none bg-[#14162b] text-white text-[10px] font-semibold py-0.5 px-2 rounded-md whitespace-nowrap shadow-xl z-40 animate-in fade-in zoom-in-95 duration-100">
-                      {d.name}: {d.count} ({d.change})
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          {/* Overlapping bubble chart visualization: Dynamic generation & organic placement */}
+          <div className="my-3.5 mx-auto max-w-[300px]">
+            <ParticipationBubbleChart data={divisions} />
           </div>
 
           {/* Top 4 Label after circle bars */}

@@ -86,6 +86,8 @@ interface TrainerDataContextType {
   setIsChatbotOpen: (open: boolean) => void;
   chatMessages: ChatMessage[];
   sendChatMessage: (text: string) => void;
+
+  isLoading: boolean;
 }
 
 const initialCourses: TrainerCourse[] = [
@@ -890,6 +892,7 @@ export const TrainerDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const [isChatbotOpen, setIsChatbotOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(initialChatMessages);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Sync courses directly with unified shared courses
   const courses: TrainerCourse[] = unified.sharedCourses;
@@ -1098,6 +1101,7 @@ export const TrainerDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setIsChatbotOpen,
         chatMessages,
         sendChatMessage,
+        isLoading,
       }}
     >
       {children}

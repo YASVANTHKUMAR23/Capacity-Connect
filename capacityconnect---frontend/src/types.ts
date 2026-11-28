@@ -284,6 +284,7 @@ export interface CourseItem {
   status: 'Active' | 'Inactive';
   initials: string;
   avatarBg: string;
+  level?: string;
 }
 
 export interface PortalSettings {
